@@ -26,7 +26,7 @@ export default function LoginPage() {
     setIsSubmitting(false);
 
     if (response.ok) {
-      router.push('/admin/proposals');
+      window.location.assign('/admin/proposals');
       return;
     }
 

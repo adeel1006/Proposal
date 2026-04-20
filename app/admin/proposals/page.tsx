@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import ItemEditor from '@/app/components/ItemEditor';
 import ProposalPreview from '@/app/components/ProposalPreview';
+import { generateProposalHTML } from '@/lib/clientPdfService';
 import {
   Proposal,
   ProposalItem,
@@ -30,6 +31,8 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<'general' | 'items' | 'preview'>('general');
   const [saveMessage, setSaveMessage] = useState('');
   const [isHydrated, setIsHydrated] = useState(false);
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   // Load companies and proposal from localStorage & initialize ID on client side only
   useEffect(() => {
@@ -153,6 +156,131 @@ export default function AdminDashboard() {
         ...prev,
         companyId: company.id,
       }));
+    }
+  };
+
+  const handleSendProposalEmail = async () => {
+    if (!customerEmail || !proposal.clientName) {
+      setSaveMessage('❌ Please enter customer email and client name');
+      setTimeout(() => setSaveMessage(''), 3000);
+      return;
+    }
+
+    if (!selectedCompany) {
+      setSaveMessage('❌ Please select a company');
+      setTimeout(() => setSaveMessage(''), 3000);
+      return;
+    }
+
+    if (proposal.selectedItems.length === 0) {
+      setSaveMessage('❌ Please select at least one service');
+      setTimeout(() => setSaveMessage(''), 3000);
+      return;
+    }
+
+    setIsSendingEmail(true);
+    setSaveMessage(''); // Clear previous messages
+
+    try {
+      // Validate PDF library
+      const html2pdf = (window as any).html2pdf;
+      if (!html2pdf) {
+        throw new Error('PDF library (html2pdf) not loaded. Please refresh the page and try again.');
+      }
+
+      // Generate PDF HTML
+      const selectedItems = proposal.items.filter((item) =>
+        proposal.selectedItems.includes(item.id)
+      );
+
+      const htmlContent = generateProposalHTML(
+        proposal,
+        selectedCompany,
+        selectedItems.map(item => ({
+          ...item,
+          quantity: item.quantity || 1,
+        }))
+      );
+
+      // Create element and generate PDF
+      const element = document.createElement('div');
+      element.innerHTML = htmlContent;
+
+      setSaveMessage('⏳ Generating PDF...');
+
+      const pdfBase64 = await new Promise<string>((resolve, reject) => {
+        let timeoutId: NodeJS.Timeout | null = null;
+
+        try {
+          timeoutId = setTimeout(() => {
+            reject(new Error('PDF generation timeout. Please try again.'));
+          }, 30000); // 30 second timeout
+
+          html2pdf()
+            .set({
+              margin: 10,
+              filename: `${proposal.projectTitle || 'proposal'}.pdf`,
+              image: { type: 'jpeg', quality: 0.98 },
+              html2canvas: { scale: 2, useCORS: true, logging: false },
+              jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' },
+              pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+            })
+            .from(element)
+            .outputPdf('dataurlstring')
+            .then((pdf: string) => {
+              if (timeoutId) clearTimeout(timeoutId);
+              if (!pdf || typeof pdf !== 'string') {
+                throw new Error('PDF generation returned invalid data.');
+              }
+              const base64 = pdf.replace(/^data:application\/pdf;base64,/, '');
+              if (!base64) {
+                throw new Error('Failed to convert PDF to base64.');
+              }
+              resolve(base64);
+            })
+            .catch((error: any) => {
+              if (timeoutId) clearTimeout(timeoutId);
+              reject(error);
+            });
+        } catch (error) {
+          if (timeoutId) clearTimeout(timeoutId);
+          reject(error);
+        }
+      });
+
+      setSaveMessage('📧 Sending proposal email...');
+
+      // Send email with PDF
+      const response = await fetch('/api/proposals/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerEmail,
+          customerName: proposal.clientName,
+          proposal,
+          company: selectedCompany,
+          items: selectedItems,
+          pdfBase64,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setSaveMessage(`✅ ${result.message}`);
+        setCustomerEmail('');
+        setTimeout(() => setSaveMessage(''), 5000);
+      } else {
+        setSaveMessage(`❌ ${result.error || 'Failed to send proposal'}`);
+        setTimeout(() => setSaveMessage(''), 5000);
+      }
+    } catch (error) {
+      console.error('Error sending proposal:', error);
+      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+      setSaveMessage(`❌ ${errorMessage}`);
+      setTimeout(() => setSaveMessage(''), 5000);
+    } finally {
+      setIsSendingEmail(false);
     }
   };
 
@@ -564,15 +692,177 @@ export default function AdminDashboard() {
 
         {/* Preview Tab */}
         {activeTab === 'preview' && (
-          <div className="bg-white p-8 rounded-lg shadow">
-            <ProposalPreview
-              clientName={proposal.clientName}
-              projectTitle={proposal.projectTitle}
-              selectedItems={proposal.selectedItems}
-              items={proposal.items}
-              notes={proposal.notes}
-              validUntil={proposal.validUntil}
-            />
+          <div className="max-w-4xl mx-auto space-y-6">
+            {/* Proposal Details Section */}
+            <div className="bg-white p-8 rounded-lg shadow">
+              <h2 className="text-2xl font-bold mb-6 text-gray-900">📋 Proposal Details</h2>
+              
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
+                  <div className="text-xs text-blue-600 font-semibold uppercase tracking-wide">Client Name</div>
+                  <div className="mt-1 font-bold text-gray-900">{proposal.clientName || 'Not Set'}</div>
+                </div>
+                <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
+                  <div className="text-xs text-purple-600 font-semibold uppercase tracking-wide">Project Title</div>
+                  <div className="mt-1 font-bold text-gray-900 truncate">{proposal.projectTitle || 'Not Set'}</div>
+                </div>
+                <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
+                  <div className="text-xs text-green-600 font-semibold uppercase tracking-wide">Services</div>
+                  <div className="mt-1 font-bold text-gray-900">{proposal.selectedItems.length} Selected</div>
+                </div>
+                <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-4 rounded-lg border border-orange-200">
+                  <div className="text-xs text-orange-600 font-semibold uppercase tracking-wide">Total Amount</div>
+                  <div className="mt-1 font-bold text-gray-900">{selectedCompany?.currency || 'USD'} {total.toFixed(2)}</div>
+                </div>
+              </div>
+
+              {/* Company Info */}
+              <div className="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="text-sm font-semibold text-gray-900 mb-2">🏢 Company Information</div>
+                <div className="text-sm text-gray-700">
+                  <p><strong>{selectedCompany?.businessName || 'Company not selected'}</strong></p>
+                  {selectedCompany && (
+                    <>
+                      <p>📧 {selectedCompany.email}</p>
+                      <p>📱 {selectedCompany.mobileNumber}</p>
+                      {selectedCompany.address && <p>📍 {selectedCompany.address}</p>}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Services Table */}
+              <div className="mb-8">
+                <div className="text-sm font-semibold text-gray-900 mb-3">🛍️ Services Included</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b-2 border-gray-300 bg-gray-50">
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Service</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Description</th>
+                        <th className="text-center py-3 px-4 font-semibold text-gray-700">Qty</th>
+                        <th className="text-right py-3 px-4 font-semibold text-gray-700">Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {proposal.items.filter(i => proposal.selectedItems.includes(i.id)).length > 0 ? (
+                        proposal.items
+                          .filter((item) => proposal.selectedItems.includes(item.id))
+                          .map((item) => (
+                            <tr key={item.id} className="border-b border-gray-200 hover:bg-gray-50">
+                              <td className="py-3 px-4 font-medium text-gray-900">{item.name}</td>
+                              <td className="py-3 px-4 text-gray-600">{item.description}</td>
+                              <td className="py-3 px-4 text-center text-gray-900">{item.quantity || 1}</td>
+                              <td className="py-3 px-4 text-right font-semibold text-gray-900">
+                                {selectedCompany?.currency || 'USD'} {(item.price * (item.quantity || 1)).toFixed(2)}
+                              </td>
+                            </tr>
+                          ))
+                      ) : (
+                        <tr>
+                          <td colSpan={4} className="py-4 text-center text-gray-500">
+                            No services selected
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Total Amount */}
+              <div className="flex justify-end mb-8">
+                <div className="bg-gradient-to-r from-gray-900 to-gray-800 text-white p-6 rounded-lg">
+                  <div className="flex gap-12">
+                    <div>
+                      <div className="text-xs text-gray-300 uppercase tracking-wide">Subtotal</div>
+                      <div className="text-2xl font-bold">{selectedCompany?.currency || 'USD'} {total.toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-300 uppercase tracking-wide">Total</div>
+                      <div className="text-3xl font-bold">{selectedCompany?.currency || 'USD'} {total.toFixed(2)}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Notes if any */}
+              {proposal.notes && (
+                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="text-sm font-semibold text-gray-900 mb-2">📝 Additional Notes</div>
+                  <div className="text-sm text-gray-700 whitespace-pre-wrap">{proposal.notes}</div>
+                </div>
+              )}
+            </div>
+
+            {/* Customer Email & Send Section */}
+            <div className="bg-white p-8 rounded-lg shadow">
+              <h2 className="text-2xl font-bold mb-6 text-gray-900">📧 Send Proposal to Customer</h2>
+
+              <div className="space-y-4">
+                {/* Email Input */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-900 mb-2">
+                    Customer Email Address *
+                  </label>
+                  <input
+                    type="email"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    placeholder="customer@example.com"
+                    className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    disabled={isSendingEmail}
+                  />
+                  <p className="mt-1 text-xs text-gray-600">The proposal PDF will be sent to this email address</p>
+                </div>
+
+                {/* Send Button */}
+                <button
+                  onClick={handleSendProposalEmail}
+                  disabled={isSendingEmail || !customerEmail || !proposal.clientName || proposal.selectedItems.length === 0}
+                  className={`w-full px-6 py-4 font-semibold rounded-lg transition flex items-center justify-center gap-2 ${
+                    isSendingEmail || !customerEmail || !proposal.clientName || proposal.selectedItems.length === 0
+                      ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                      : 'bg-green-600 text-white hover:bg-green-700'
+                  }`}
+                >
+                  {isSendingEmail ? (
+                    <>
+                      <span className="animate-spin">⏳</span> Sending Proposal...
+                    </>
+                  ) : (
+                    <>
+                      📧 Send Proposal via Email
+                    </>
+                  )}
+                </button>
+
+                {/* Status Message */}
+                {saveMessage && (
+                  <div className={`p-4 rounded-lg border-l-4 ${
+                    saveMessage.startsWith('✅') 
+                      ? 'bg-green-50 border-green-500 text-green-900' 
+                      : 'bg-red-50 border-red-500 text-red-900'
+                  }`}>
+                    <p className="font-semibold text-sm">{saveMessage}</p>
+                  </div>
+                )}
+
+                {/* Instructions */}
+                {!isSendingEmail && !saveMessage && (
+                  <div className="p-4 bg-blue-50 border border-blue-300 rounded-lg">
+                    <p className="text-sm text-blue-900">
+                      <strong>✨ What the customer will receive:</strong><br />
+                      • Professional HTML email with proposal details in a table<br />
+                      • 3 Action buttons: Save as PDF, Accept, Decline<br />
+                      • PDF attachment of the complete proposal<br />
+                      • Your company contact information
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>
