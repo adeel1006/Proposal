@@ -10,19 +10,21 @@
   --surface: #ffffff;
   --primary: #2563eb;
   --primary-hover: #1d4ed8;
+  --font-heading: "Nunito", sans-serif;
+  --font-body: "Inter", sans-serif;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: var(--font-body);
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-body);
   line-height: 1.75;
   min-height: 100vh;
   color-scheme: light;
@@ -37,6 +39,7 @@ h5,
 h6 {
   color: var(--heading);
   font-weight: 700;
+  font-family: var(--font-heading);
 }
 
 p,

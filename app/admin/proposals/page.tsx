@@ -51,15 +51,32 @@ export default function AdminDashboard() {
     const savedProposal = localStorage.getItem('currentProposal');
     if (savedProposal) {
       try {
-        const loadedProposal = JSON.parse(savedProposal);
-        setProposal(loadedProposal);
+        let loadedProposal = JSON.parse(savedProposal);
 
         if (loadedProposal.companyId) {
           const company = parsedCompanies.find((c) => c.id === loadedProposal.companyId);
           if (company) {
             setSelectedCompany(company);
+            
+            // Load company-specific services if they exist
+            const savedCompanyServices = localStorage.getItem(`company_services_${company.id}`);
+            if (savedCompanyServices) {
+              try {
+                const parsedServices = JSON.parse(savedCompanyServices);
+                if (Array.isArray(parsedServices) && parsedServices.length > 0) {
+                  loadedProposal = {
+                    ...loadedProposal,
+                    items: parsedServices,
+                  };
+                }
+              } catch (e) {
+                console.error('Error loading company services:', e);
+              }
+            }
           }
         }
+        
+        setProposal(loadedProposal);
       } catch (e) {
         console.error('Error loading proposal:', e);
       }
@@ -136,13 +153,29 @@ export default function AdminDashboard() {
 
   const handleNewProposal = () => {
     if (confirm('Create a new proposal? Current changes will be saved.')) {
+      // Load company-specific services if a company is selected
+      let itemsToUse = DEFAULT_ITEMS;
+      if (selectedCompany) {
+        const savedCompanyServices = localStorage.getItem(`company_services_${selectedCompany.id}`);
+        if (savedCompanyServices) {
+          try {
+            const parsedServices = JSON.parse(savedCompanyServices);
+            if (Array.isArray(parsedServices) && parsedServices.length > 0) {
+              itemsToUse = parsedServices;
+            }
+          } catch (e) {
+            console.error('Error loading company services:', e);
+          }
+        }
+      }
+
       setProposal({
         id: generateProposalId(),
         companyId: selectedCompany?.id || '',
         clientName: '',
         projectTitle: '',
         selectedItems: [],
-        items: DEFAULT_ITEMS,
+        items: itemsToUse,
         terms: DEFAULT_TERMS,
       });
     }
@@ -152,9 +185,27 @@ export default function AdminDashboard() {
     const company = companies.find(c => c.id === companyId);
     if (company) {
       setSelectedCompany(company);
+      
+      // Load company-specific services from localStorage
+      let companyServices: ProposalItem[] = DEFAULT_ITEMS; // fallback to defaults
+      const savedCompanyServices = localStorage.getItem(`company_services_${companyId}`);
+      
+      if (savedCompanyServices) {
+        try {
+          const parsedServices = JSON.parse(savedCompanyServices);
+          if (Array.isArray(parsedServices) && parsedServices.length > 0) {
+            companyServices = parsedServices;
+          }
+        } catch (e) {
+          console.error('Error loading company services:', e);
+        }
+      }
+      
       setProposal((prev) => ({
         ...prev,
         companyId: company.id,
+        items: companyServices,
+        selectedItems: [], // Reset selection since items changed
       }));
     }
   };
@@ -178,6 +229,16 @@ export default function AdminDashboard() {
       return;
     }
 
+    // Ensure proposal has an ID
+    let proposalWithId = proposal;
+    if (!proposal.id || proposal.id.trim() === '') {
+      proposalWithId = {
+        ...proposal,
+        id: generateProposalId(),
+      };
+      setProposal(proposalWithId);
+    }
+
     setIsSendingEmail(true);
     setSaveMessage(''); // Clear previous messages
 
@@ -189,12 +250,12 @@ export default function AdminDashboard() {
       }
 
       // Generate PDF HTML
-      const selectedItems = proposal.items.filter((item) =>
-        proposal.selectedItems.includes(item.id)
+      const selectedItems = proposalWithId.items.filter((item) =>
+        proposalWithId.selectedItems.includes(item.id)
       );
 
       const htmlContent = generateProposalHTML(
-        proposal,
+        proposalWithId,
         selectedCompany,
         selectedItems.map(item => ({
           ...item,
@@ -256,8 +317,8 @@ export default function AdminDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customerEmail,
-          customerName: proposal.clientName,
-          proposal,
+          customerName: proposalWithId.clientName,
+          proposal: proposalWithId,
           company: selectedCompany,
           items: selectedItems,
           pdfBase64,

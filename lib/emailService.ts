@@ -35,39 +35,54 @@ export async function sendProposalEmail(
   items: ProposalItem[],
   pdfBuffer: Buffer
 ) {
+  console.log('📧 Sending email for proposal:', {
+    id: proposal.id,
+    projectTitle: proposal.projectTitle,
+    customerEmail,
+    customerName
+  });
+
   const selectedItems = items.filter((item) => proposal.selectedItems.includes(item.id));
   const subtotal = selectedItems.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0);
 
   const emailBody = `
     <html>
-      <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #1f2937; background-color: #f9fafb;">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+      </head>
+      <body style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.6; color: #1f2937; background-color: #f9fafb;">
         <div style="max-width: 700px; margin: 0 auto; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
           
           <!-- Header -->
           <div style="background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%); padding: 40px 20px; text-align: center; color: white;">
-            <h1 style="margin: 0; font-size: 32px; font-weight: bold;">📋 Your Proposal</h1>
-            <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;">From: ${company.businessName}</p>
+            ${company.logo ? `
+              <img src="${company.logo}" alt="${company.businessName} Logo" style="max-width: 180px; max-height: 80px; margin-bottom: 20px; object-fit: contain;">
+            ` : ''}
+            <h1 style="margin: 0; font-size: 32px; font-weight: bold; font-family: 'Nunito', sans-serif;">📋 Your Proposal</h1>
+            <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9; font-family: 'Inter', sans-serif;">From: ${company.businessName}</p>
           </div>
 
           <!-- Main Content -->
           <div style="padding: 40px 30px;">
-            <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 22px;">Hello ${customerName},</h2>
+            <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 22px; font-family: 'Nunito', sans-serif;">Hello ${customerName},</h2>
             
-            <p style="color: #4b5563; margin-bottom: 25px; line-height: 1.6;">
+            <p style="color: #4b5563; margin-bottom: 25px; line-height: 1.6; font-family: 'Inter', sans-serif;">
               Thank you for your interest! Please find your customized proposal for <strong>${proposal.projectTitle}</strong> below.
               Please review the details and let us know your decision by clicking one of the action buttons at the bottom.
             </p>
 
             <!-- Proposal Summary Box -->
             <div style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-left: 4px solid #0284c7; padding: 20px; margin-bottom: 30px; border-radius: 4px;">
-              <table style="width: 100%; font-size: 14px;">
+              <table style="width: 100%; font-size: 14px; font-family: 'Inter', sans-serif;">
                 <tr>
                   <td style="padding: 8px 0;">
-                    <strong style="color: #1e40af;">Proposal ID:</strong><br>
+                    <strong style="color: #1e40af; font-family: 'Nunito', sans-serif;">Proposal ID:</strong><br>
                     <span style="color: #475569; font-family: monospace;">${proposal.id}</span>
                   </td>
                   <td style="padding: 8px 0; text-align: right;">
-                    <strong style="color: #1e40af;">Valid Until:</strong><br>
+                    <strong style="color: #1e40af; font-family: 'Nunito', sans-serif;">Valid Until:</strong><br>
                     <span style="color: #475569;">${new Date(new Date().setDate(new Date().getDate() + 30)).toLocaleDateString()}</span>
                   </td>
                 </tr>
@@ -75,8 +90,8 @@ export async function sendProposalEmail(
             </div>
 
             <!-- Services Table -->
-            <h3 style="color: #1f2937; font-size: 16px; margin-bottom: 15px; margin-top: 30px;">📦 Services Included:</h3>
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+            <h3 style="color: #1f2937; font-size: 16px; margin-bottom: 15px; margin-top: 30px; font-family: 'Nunito', sans-serif;">📦 Services Included:</h3>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-family: 'Inter', sans-serif;">
               <thead>
                 <tr style="background-color: #f3f4f6; border-bottom: 2px solid #e5e7eb;">
                   <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151; font-size: 13px;">Service</th>
@@ -88,8 +103,8 @@ export async function sendProposalEmail(
                 ${selectedItems.map(item => `
                   <tr style="border-bottom: 1px solid #e5e7eb;">
                     <td style="padding: 12px; color: #1f2937;">
-                      <strong>${item.name}</strong><br>
-                      <span style="color: #6b7280; font-size: 12px;">${item.description}</span>
+                      <strong style="font-family: 'Nunito', sans-serif;">${item.name}</strong><br>
+                      <span style="color: #6b7280; font-size: 12px; font-family: 'Inter', sans-serif;">${item.description}</span>
                     </td>
                     <td style="padding: 12px; text-align: center; color: #374151;">${item.quantity || 1}</td>
                     <td style="padding: 12px; text-align: right; color: #1f2937; font-weight: 600;">
@@ -101,7 +116,7 @@ export async function sendProposalEmail(
             </table>
 
             <!-- Total Amount -->
-            <div style="text-align: right; margin-bottom: 30px;">
+            <div style="text-align: right; margin-bottom: 30px; font-family: 'Inter', sans-serif;">
               <table style="width: 100%; max-width: 300px; margin-left: auto;">
                 <tr style="border-top: 2px solid #e5e7eb;">
                   <td style="padding: 12px 0; color: #6b7280; text-align: right;">Subtotal:</td>
@@ -116,8 +131,8 @@ export async function sendProposalEmail(
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding: 12px 0; color: #1f2937; text-align: right; font-weight: 700; font-size: 16px;">Total:</td>
-                  <td style="padding: 12px 0 12px 20px; text-align: right; color: #0284c7; font-weight: 700; font-size: 18px;">
+                  <td style="padding: 12px 0; color: #1f2937; text-align: right; font-weight: 700; font-size: 16px; font-family: 'Nunito', sans-serif;">Total:</td>
+                  <td style="padding: 12px 0 12px 20px; text-align: right; color: #0284c7; font-weight: 700; font-size: 18px; font-family: 'Nunito', sans-serif;">
                     ${company.currency || 'USD'} ${subtotal.toFixed(2)}
                   </td>
                 </tr>
@@ -125,24 +140,24 @@ export async function sendProposalEmail(
             </div>
 
             <!-- Action Buttons -->
-            <h3 style="color: #1f2937; font-size: 16px; margin-bottom: 15px; margin-top: 30px;">👇 Take Action:</h3>
+            <h3 style="color: #1f2937; font-size: 16px; margin-bottom: 15px; margin-top: 30px; font-family: 'Nunito', sans-serif;">👇 Take Action:</h3>
             <table style="width: 100%; margin-bottom: 30px;">
               <tr>
                 <td style="padding: 10px; text-align: center;">
                   <a href="${process.env.APP_URL || 'http://localhost:3000'}/api/proposals/generate-pdf/${proposal.id}?email=${customerEmail}" 
-                    style="display: inline-block; padding: 12px 24px; background-color: #6b7280; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
+                    style="display: inline-block; padding: 12px 24px; background-color: #6b7280; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; font-family: 'Inter', sans-serif;">
                     💾 Save as PDF
                   </a>
                 </td>
                 <td style="padding: 10px; text-align: center;">
                   <a href="${process.env.APP_URL || 'http://localhost:3000'}/api/proposals/accept/${proposal.id}?email=${customerEmail}" 
-                    style="display: inline-block; padding: 12px 24px; background-color: #059669; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
+                    style="display: inline-block; padding: 12px 24px; background-color: #059669; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; font-family: 'Inter', sans-serif;">
                     ✅ Accept Proposal
                   </a>
                 </td>
                 <td style="padding: 10px; text-align: center;">
                   <a href="${process.env.APP_URL || 'http://localhost:3000'}/api/proposals/decline/${proposal.id}?email=${customerEmail}" 
-                    style="display: inline-block; padding: 12px 24px; background-color: #dc2626; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
+                    style="display: inline-block; padding: 12px 24px; background-color: #dc2626; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; font-family: 'Inter', sans-serif;">
                     ❌ Decline Proposal
                   </a>
                 </td>
@@ -150,10 +165,10 @@ export async function sendProposalEmail(
             </table>
 
             <!-- Company Info -->
-            <div style="background-color: #f3f4f6; padding: 20px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #6b7280;">
-              <h3 style="color: #1f2937; margin: 0 0 12px 0; font-size: 14px;">🏢 Company Details:</h3>
+            <div style="background-color: #f3f4f6; padding: 20px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #6b7280; font-family: 'Inter', sans-serif;">
+              <h3 style="color: #1f2937; margin: 0 0 12px 0; font-size: 14px; font-family: 'Nunito', sans-serif;">🏢 Company Details:</h3>
               <p style="margin: 6px 0; color: #4b5563; font-size: 14px;">
-                <strong>${company.businessName}</strong><br>
+                <strong style="font-family: 'Nunito', sans-serif;">${company.businessName}</strong><br>
                 ${company.email ? `📧 ${company.email}<br>` : ''}
                 ${company.mobileNumber ? `📱 ${company.mobileNumber}<br>` : ''}
                 ${company.address ? `📍 ${company.address}<br>` : ''}
@@ -162,8 +177,8 @@ export async function sendProposalEmail(
             </div>
 
             <!-- Terms -->
-            <div style="background-color: #fff7ed; padding: 20px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #ea580c; font-size: 13px;">
-              <h3 style="color: #1f2937; margin: 0 0 12px 0; font-size: 14px;">⚖️ Terms & Conditions:</h3>
+            <div style="background-color: #fff7ed; padding: 20px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #ea580c; font-size: 13px; font-family: 'Inter', sans-serif;">
+              <h3 style="color: #1f2937; margin: 0 0 12px 0; font-size: 14px; font-family: 'Nunito', sans-serif;">⚖️ Terms & Conditions:</h3>
               <ul style="color: #4b5563; margin: 0; padding-left: 20px;">
                 <li style="margin-bottom: 6px;">50% deposit required to begin the project</li>
                 <li style="margin-bottom: 6px;">Balance due upon project completion</li>
@@ -171,13 +186,13 @@ export async function sendProposalEmail(
               </ul>
             </div>
 
-            <p style="color: #6b7280; font-size: 13px; margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 20px;">
+            <p style="color: #6b7280; font-size: 13px; margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 20px; font-family: 'Inter', sans-serif;">
               If you have any questions about this proposal or would like to discuss the details further, please don't hesitate to reach out. We look forward to working with you!
             </p>
           </div>
 
           <!-- Footer -->
-          <div style="background-color: #f3f4f6; padding: 20px; text-align: center; color: #6b7280; font-size: 12px;">
+          <div style="background-color: #f3f4f6; padding: 20px; text-align: center; color: #6b7280; font-size: 12px; font-family: 'Inter', sans-serif;">
             <p style="margin: 0;">This is an automated email. Please do not reply directly to this address.</p>
             <p style="margin: 8px 0 0 0;">© 2025 ${company.businessName}. All rights reserved.</p>
           </div>

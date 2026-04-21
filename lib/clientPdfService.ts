@@ -22,6 +22,7 @@ export function generateProposalHTML(
     address?: string;
     website?: string;
     currency?: string;
+    logo?: string;
   },
   selectedItems: Array<{
     id: string;
@@ -68,6 +69,9 @@ export function generateProposalHTML(
       <body>
         <div class="container">
           <div class="header">
+            ${company.logo ? `
+              <img src="${company.logo}" alt="${company.businessName} Logo" style="max-width: 150px; max-height: 80px; margin-bottom: 15px; object-fit: contain;">
+            ` : ''}
             <div class="company-name">${company.businessName}</div>
             <div class="company-info">
               ${company.email ? `Email: ${company.email}<br>` : ''}
