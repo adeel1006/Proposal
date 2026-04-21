@@ -1,30 +1,41 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
+import { getSupabaseAdminClient } from "@/lib/supabase";
 
 export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
-    console.log('Accept URL:', url.toString());
-    console.log('Pathname:', url.pathname);
-    console.log('Path segments:', url.pathname.split('/'));
+    const proposalId = url.searchParams.get("proposalId");
+    const customerEmail = url.searchParams.get("email");
+    const paymentLink =
+      process.env.PROPOSAL_PAYMENT_LINK ||
+      "https://example.com/add-payment-link-here";
 
-    const proposalId = url.pathname.split('/')[4];
-    const customerEmail = url.searchParams.get('email');
-
-    console.log('Extracted proposalId:', proposalId);
-    console.log('Extracted customerEmail:', customerEmail);
-
-    if (!proposalId || !customerEmail) {
-      console.error('Missing data:', { proposalId, customerEmail });
-      return NextResponse.json(
-        { error: 'Missing proposal ID or customer email', debug: { proposalId, customerEmail, url: url.toString() } },
-        { status: 400 }
-      );
+    if (!proposalId) {
+      return NextResponse.json({ error: "Missing proposal ID" }, { status: 400 });
     }
 
-    // Log the acceptance (in a real app, store in database)
-    console.log(`✅ Proposal ${proposalId} was accepted by ${customerEmail}`);
+    try {
+      const supabase = getSupabaseAdminClient();
+      const responseAt = new Date().toISOString();
+      const updateWithResponseAt = await supabase
+        .from("proposals")
+        .update({ status: "accepted", response_at: responseAt })
+        .eq("id", proposalId);
 
-    // Always return HTML response for email links
+      if (updateWithResponseAt.error) {
+        const fallback = await supabase
+          .from("proposals")
+          .update({ status: "accepted" })
+          .eq("id", proposalId);
+
+        if (fallback.error) {
+          console.error("Could not update proposal status to accepted:", fallback.error);
+        }
+      }
+    } catch (error) {
+      console.error("Could not update proposal status to accepted:", error);
+    }
+
     return new NextResponse(
       `
       <html>
@@ -32,7 +43,7 @@ export async function GET(request: NextRequest) {
           <title>Proposal Accepted</title>
           <style>
             body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
               background: linear-gradient(135deg, #059669 0%, #047857 100%);
               display: flex;
               align-items: center;
@@ -45,30 +56,18 @@ export async function GET(request: NextRequest) {
               background: white;
               border-radius: 12px;
               padding: 40px;
-              max-width: 500px;
-              box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+              max-width: 540px;
+              box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
               text-align: center;
             }
-            .icon {
-              font-size: 64px;
-              margin-bottom: 20px;
-            }
-            h1 {
-              color: #059669;
-              margin: 0 0 10px 0;
-              font-size: 28px;
-            }
-            p {
-              color: #6b7280;
-              margin: 10px 0;
-              line-height: 1.6;
-            }
+            h1 { color: #059669; margin: 0 0 10px 0; font-size: 28px; }
+            p { color: #6b7280; margin: 10px 0; line-height: 1.6; }
             .info {
               background: #f0fdf4;
               border: 1px solid #bbf7d0;
               border-radius: 8px;
               padding: 20px;
-              margin: 30px 0;
+              margin: 20px 0;
               color: #166534;
               font-size: 14px;
             }
@@ -80,23 +79,21 @@ export async function GET(request: NextRequest) {
               text-decoration: none;
               border-radius: 8px;
               font-weight: 600;
-              margin-top: 20px;
+              margin-top: 8px;
             }
+            .note { font-size: 12px; color: #6b7280; margin-top: 16px; }
           </style>
         </head>
         <body>
           <div class="container">
-            <div class="icon">✅</div>
-            <h1>Proposal Accepted!</h1>
-            <p>Thank you for accepting our proposal.</p>
-            <p>We will be in touch shortly with next steps.</p>
+            <h1>Proposal Accepted</h1>
+            <p>Thank you for accepting the proposal.</p>
             <div class="info">
               <p><strong>Proposal ID:</strong><br>${proposalId}</p>
-              <p style="margin-top: 10px;"><strong>Your Email:</strong><br>${customerEmail}</p>
+              ${customerEmail ? `<p><strong>Email:</strong><br>${customerEmail}</p>` : ""}
             </div>
-            <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
-              You can now close this window or wait for further communication from our team.
-            </p>
+            <a href="${paymentLink}" class="button" target="_blank" rel="noopener noreferrer">Continue to Payment</a>
+            <p class="note">Set PROPOSAL_PAYMENT_LINK in your environment to replace this placeholder link.</p>
           </div>
         </body>
       </html>
@@ -104,15 +101,12 @@ export async function GET(request: NextRequest) {
       {
         status: 200,
         headers: {
-          'Content-Type': 'text/html; charset=utf-8',
+          "Content-Type": "text/html; charset=utf-8",
         },
       }
     );
   } catch (error) {
-    console.error('Error accepting proposal:', error);
-    return NextResponse.json(
-      { error: 'Failed to accept proposal' },
-      { status: 500 }
-    );
+    console.error("Error accepting proposal:", error);
+    return NextResponse.json({ error: "Failed to accept proposal" }, { status: 500 });
   }
 }

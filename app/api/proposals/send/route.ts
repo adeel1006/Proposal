@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendProposalEmail } from '@/lib/emailService';
 import { Proposal, ProposalItem, CompanyBranding } from '@/app/lib/proposalTypes';
+import { getSupabaseAdminClient } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,7 +31,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+    try {
+      const supabase = getSupabaseAdminClient();
+      await supabase
+        .from('proposals')
+        .upsert(
+          {
+            id: proposal.id,
+            company_id: proposal.companyId || null,
+            client_name: proposal.clientName,
+            client_email: proposal.clientEmail || customerEmail,
+            project_title: proposal.projectTitle,
+            status: 'submitted',
+            pdf_base64: pdfBase64,
+            submitted_at: new Date().toISOString(),
+          },
+          { onConflict: 'id' }
+        );
+    } catch (error) {
+      console.error('Could not persist sent PDF to database:', error);
+    }
 
     // Check if SMTP is configured
     if (!process.env.SMTP_USER || !process.env.SMTP_PASSWORD) {
@@ -51,7 +71,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await sendProposalEmail(customerEmail, customerName, proposal, company, items, pdfBuffer);
+    await sendProposalEmail(customerEmail, customerName, proposal, company, items);
 
     return NextResponse.json({
       success: true,

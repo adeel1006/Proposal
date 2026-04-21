@@ -1,30 +1,174 @@
-import nodemailer from 'nodemailer';
-import type { Proposal, ProposalItem, CompanyBranding } from '@/app/lib/proposalTypes';
+import nodemailer from "nodemailer";
+import type { Attachment } from "nodemailer/lib/mailer";
+import type { Proposal, ProposalItem, CompanyBranding } from "@/app/lib/proposalTypes";
 
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: process.env.SMTP_SECURE === 'true',
+  host: process.env.SMTP_HOST || "smtp.gmail.com",
+  port: parseInt(process.env.SMTP_PORT || "587", 10),
+  secure: process.env.SMTP_SECURE === "true",
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASSWORD,
   },
 });
 
-// Verify transporter connection on startup (development only)
-if (process.env.NODE_ENV === 'development' && process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
+if (process.env.NODE_ENV === "development" && process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
   transporter.verify((error) => {
     if (error) {
-      console.error('❌ SMTP Connection Error:', error.message);
-      if (error.message.includes('Username and Password not accepted') || error.message.includes('EAUTH')) {
-        console.error('   └─ This usually means your SMTP credentials are wrong.');
-        console.error('   └─ For Gmail: Use an App Password, not your Gmail password.');
-        console.error('   └─ See SETUP.md for detailed configuration instructions.');
-      }
+      console.error("SMTP connection error:", error.message);
     } else {
-      console.log('✅ SMTP server is ready to send emails');
+      console.log("SMTP server is ready to send emails");
     }
   });
+}
+
+function resolveLogo(company: CompanyBranding) {
+  if (!company.logo) {
+    return { logoSrc: "", logoAttachment: null as Attachment | null };
+  }
+
+  const dataUriMatch = company.logo.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+  if (!dataUriMatch) {
+    return { logoSrc: company.logo, logoAttachment: null as Attachment | null };
+  }
+
+  const mimeType = dataUriMatch[1];
+  const base64Data = dataUriMatch[2];
+  const extension = mimeType.split("/")[1] || "png";
+  const logoCid = "company-logo@proposal";
+
+  return {
+    logoSrc: `cid:${logoCid}`,
+    logoAttachment: {
+      filename: `company-logo.${extension}`,
+      content: Buffer.from(base64Data, "base64"),
+      contentType: mimeType,
+      cid: logoCid,
+      contentDisposition: "inline",
+    } as Attachment,
+  };
+}
+
+function buildEmailHtml(
+  customerName: string,
+  customerEmail: string,
+  proposal: Proposal,
+  company: CompanyBranding,
+  selectedItems: ProposalItem[],
+  subtotal: number,
+  logoSrc: string
+) {
+  const appUrl = process.env.APP_URL || "http://localhost:3000";
+  const query = `proposalId=${encodeURIComponent(proposal.id)}&email=${encodeURIComponent(customerEmail)}`;
+  const pdfLink = `${appUrl}/api/proposals/generate-pdf?${query}`;
+  const acceptLink = `${appUrl}/api/proposals/accept?${query}`;
+  const declineLink = `${appUrl}/api/proposals/decline?${query}`;
+  const validUntilText =
+    proposal.validUntil ||
+    new Date(new Date().setDate(new Date().getDate() + 30)).toLocaleDateString();
+
+  return `
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Proposal</title>
+      </head>
+      <body style="margin: 0; padding: 24px; background: #f8fafc; color: #0f172a; font-family: Inter, Arial, sans-serif;">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width: 760px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+          <tr>
+            <td style="padding: 28px; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #ffffff;">
+              ${logoSrc ? `<img src="${logoSrc}" alt="${company.businessName} logo" style="max-height: 64px; max-width: 180px; display: block; margin-bottom: 14px;" />` : ""}
+              <h1 style="margin: 0; font-size: 28px; line-height: 1.2;">Project Proposal</h1>
+              <p style="margin: 8px 0 0 0; opacity: 0.92;">${company.businessName}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 28px;">
+              <p style="margin: 0 0 14px 0;">Hello ${customerName},</p>
+              <p style="margin: 0 0 20px 0; color: #334155;">
+                Please review your proposal for <strong>${proposal.projectTitle}</strong>. You can download the PDF, accept and continue to payment, or decline.
+              </p>
+
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; margin-bottom: 20px;">
+                <tr>
+                  <td style="padding: 14px 16px; width: 33.33%; vertical-align: top;">
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">Proposal ID</div>
+                    <div style="font-size: 14px; font-weight: 600; word-break: break-word;">${proposal.id}</div>
+                  </td>
+                  <td style="padding: 14px 16px; width: 33.33%; vertical-align: top;">
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">Client</div>
+                    <div style="font-size: 14px; font-weight: 600;">${proposal.clientName}</div>
+                  </td>
+                  <td style="padding: 14px 16px; width: 33.33%; vertical-align: top;">
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">Valid Until</div>
+                    <div style="font-size: 14px; font-weight: 600;">${validUntilText}</div>
+                  </td>
+                </tr>
+              </table>
+
+              <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px;">
+                <thead>
+                  <tr style="background: #f1f5f9;">
+                    <th style="text-align: left; padding: 10px; border-bottom: 1px solid #e2e8f0;">Service</th>
+                    <th style="text-align: center; padding: 10px; border-bottom: 1px solid #e2e8f0;">Qty</th>
+                    <th style="text-align: right; padding: 10px; border-bottom: 1px solid #e2e8f0;">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${selectedItems
+                    .map(
+                      (item) => `
+                    <tr>
+                      <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">
+                        <strong>${item.name}</strong><br />
+                        <span style="font-size: 12px; color: #64748b;">${item.description}</span>
+                      </td>
+                      <td style="padding: 10px; text-align: center; border-bottom: 1px solid #e2e8f0;">${item.quantity || 1}</td>
+                      <td style="padding: 10px; text-align: right; border-bottom: 1px solid #e2e8f0;">${company.currency || "USD"} ${(item.price * (item.quantity || 1)).toFixed(2)}</td>
+                    </tr>
+                  `
+                    )
+                    .join("")}
+                </tbody>
+              </table>
+
+              <div style="text-align: right; margin-bottom: 22px;">
+                <div style="font-size: 13px; color: #64748b;">Total</div>
+                <div style="font-size: 24px; font-weight: 700;">${company.currency || "USD"} ${subtotal.toFixed(2)}</div>
+              </div>
+
+              <table style="width: 100%; margin-bottom: 8px;">
+                <tr>
+                  <td style="padding: 8px; text-align: center;">
+                    <a href="${pdfLink}" style="display: inline-block; padding: 10px 16px; background: #475569; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600;">Download PDF</a>
+                  </td>
+                  <td style="padding: 8px; text-align: center;">
+                    <a href="${acceptLink}" style="display: inline-block; padding: 10px 16px; background: #059669; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600;">Accept and Pay</a>
+                  </td>
+                  <td style="padding: 8px; text-align: center;">
+                    <a href="${declineLink}" style="display: inline-block; padding: 10px 16px; background: #dc2626; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600;">Decline</a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 8px 0 0 0; font-size: 12px; color: #64748b;">
+                Set <strong>PROPOSAL_PAYMENT_LINK</strong> in environment to define your payment destination.
+              </p>
+
+              <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #475569;">
+                <div><strong>${company.businessName}</strong></div>
+                ${company.email ? `<div>${company.email}</div>` : ""}
+                ${company.mobileNumber ? `<div>${company.mobileNumber}</div>` : ""}
+                ${company.address ? `<div>${company.address}</div>` : ""}
+                ${company.website ? `<div>${company.website}</div>` : ""}
+              </div>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `;
 }
 
 export async function sendProposalEmail(
@@ -32,187 +176,33 @@ export async function sendProposalEmail(
   customerName: string,
   proposal: Proposal,
   company: CompanyBranding,
-  items: ProposalItem[],
-  pdfBuffer: Buffer
+  items: ProposalItem[]
 ) {
-  console.log('📧 Sending email for proposal:', {
-    id: proposal.id,
-    projectTitle: proposal.projectTitle,
-    customerEmail,
-    customerName
-  });
-
   const selectedItems = items.filter((item) => proposal.selectedItems.includes(item.id));
   const subtotal = selectedItems.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0);
+  const { logoSrc, logoAttachment } = resolveLogo(company);
+  const emailBody = buildEmailHtml(
+    customerName,
+    customerEmail,
+    proposal,
+    company,
+    selectedItems,
+    subtotal,
+    logoSrc
+  );
 
-  const emailBody = `
-    <html>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
-      </head>
-      <body style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.6; color: #1f2937; background-color: #f9fafb;">
-        <div style="max-width: 700px; margin: 0 auto; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-          
-          <!-- Header -->
-          <div style="background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%); padding: 40px 20px; text-align: center; color: white;">
-            ${company.logo ? `
-              <img src="${company.logo}" alt="${company.businessName} Logo" style="max-width: 180px; max-height: 80px; margin-bottom: 20px; object-fit: contain;">
-            ` : ''}
-            <h1 style="margin: 0; font-size: 32px; font-weight: bold; font-family: 'Nunito', sans-serif;">📋 Your Proposal</h1>
-            <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9; font-family: 'Inter', sans-serif;">From: ${company.businessName}</p>
-          </div>
+  const attachments: Attachment[] = [];
 
-          <!-- Main Content -->
-          <div style="padding: 40px 30px;">
-            <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 22px; font-family: 'Nunito', sans-serif;">Hello ${customerName},</h2>
-            
-            <p style="color: #4b5563; margin-bottom: 25px; line-height: 1.6; font-family: 'Inter', sans-serif;">
-              Thank you for your interest! Please find your customized proposal for <strong>${proposal.projectTitle}</strong> below.
-              Please review the details and let us know your decision by clicking one of the action buttons at the bottom.
-            </p>
-
-            <!-- Proposal Summary Box -->
-            <div style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-left: 4px solid #0284c7; padding: 20px; margin-bottom: 30px; border-radius: 4px;">
-              <table style="width: 100%; font-size: 14px; font-family: 'Inter', sans-serif;">
-                <tr>
-                  <td style="padding: 8px 0;">
-                    <strong style="color: #1e40af; font-family: 'Nunito', sans-serif;">Proposal ID:</strong><br>
-                    <span style="color: #475569; font-family: monospace;">${proposal.id}</span>
-                  </td>
-                  <td style="padding: 8px 0; text-align: right;">
-                    <strong style="color: #1e40af; font-family: 'Nunito', sans-serif;">Valid Until:</strong><br>
-                    <span style="color: #475569;">${new Date(new Date().setDate(new Date().getDate() + 30)).toLocaleDateString()}</span>
-                  </td>
-                </tr>
-              </table>
-            </div>
-
-            <!-- Services Table -->
-            <h3 style="color: #1f2937; font-size: 16px; margin-bottom: 15px; margin-top: 30px; font-family: 'Nunito', sans-serif;">📦 Services Included:</h3>
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-family: 'Inter', sans-serif;">
-              <thead>
-                <tr style="background-color: #f3f4f6; border-bottom: 2px solid #e5e7eb;">
-                  <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151; font-size: 13px;">Service</th>
-                  <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151; font-size: 13px;">Qty</th>
-                  <th style="padding: 12px; text-align: right; font-weight: 600; color: #374151; font-size: 13px;">Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${selectedItems.map(item => `
-                  <tr style="border-bottom: 1px solid #e5e7eb;">
-                    <td style="padding: 12px; color: #1f2937;">
-                      <strong style="font-family: 'Nunito', sans-serif;">${item.name}</strong><br>
-                      <span style="color: #6b7280; font-size: 12px; font-family: 'Inter', sans-serif;">${item.description}</span>
-                    </td>
-                    <td style="padding: 12px; text-align: center; color: #374151;">${item.quantity || 1}</td>
-                    <td style="padding: 12px; text-align: right; color: #1f2937; font-weight: 600;">
-                      ${company.currency || 'USD'} ${(item.price * (item.quantity || 1)).toFixed(2)}
-                    </td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-
-            <!-- Total Amount -->
-            <div style="text-align: right; margin-bottom: 30px; font-family: 'Inter', sans-serif;">
-              <table style="width: 100%; max-width: 300px; margin-left: auto;">
-                <tr style="border-top: 2px solid #e5e7eb;">
-                  <td style="padding: 12px 0; color: #6b7280; text-align: right;">Subtotal:</td>
-                  <td style="padding: 12px 0 12px 20px; text-align: right; color: #1f2937; font-weight: 600;">
-                    ${company.currency || 'USD'} ${subtotal.toFixed(2)}
-                  </td>
-                </tr>
-                <tr style="border-bottom: 2px solid #e5e7eb;">
-                  <td style="padding: 12px 0; color: #6b7280; text-align: right;">Tax (0%):</td>
-                  <td style="padding: 12px 0 12px 20px; text-align: right; color: #1f2937; font-weight: 600;">
-                    ${company.currency || 'USD'} 0.00
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 12px 0; color: #1f2937; text-align: right; font-weight: 700; font-size: 16px; font-family: 'Nunito', sans-serif;">Total:</td>
-                  <td style="padding: 12px 0 12px 20px; text-align: right; color: #0284c7; font-weight: 700; font-size: 18px; font-family: 'Nunito', sans-serif;">
-                    ${company.currency || 'USD'} ${subtotal.toFixed(2)}
-                  </td>
-                </tr>
-              </table>
-            </div>
-
-            <!-- Action Buttons -->
-            <h3 style="color: #1f2937; font-size: 16px; margin-bottom: 15px; margin-top: 30px; font-family: 'Nunito', sans-serif;">👇 Take Action:</h3>
-            <table style="width: 100%; margin-bottom: 30px;">
-              <tr>
-                <td style="padding: 10px; text-align: center;">
-                  <a href="${process.env.APP_URL || 'http://localhost:3000'}/api/proposals/generate-pdf/${proposal.id}?email=${customerEmail}" 
-                    style="display: inline-block; padding: 12px 24px; background-color: #6b7280; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; font-family: 'Inter', sans-serif;">
-                    💾 Save as PDF
-                  </a>
-                </td>
-                <td style="padding: 10px; text-align: center;">
-                  <a href="${process.env.APP_URL || 'http://localhost:3000'}/api/proposals/accept/${proposal.id}?email=${customerEmail}" 
-                    style="display: inline-block; padding: 12px 24px; background-color: #059669; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; font-family: 'Inter', sans-serif;">
-                    ✅ Accept Proposal
-                  </a>
-                </td>
-                <td style="padding: 10px; text-align: center;">
-                  <a href="${process.env.APP_URL || 'http://localhost:3000'}/api/proposals/decline/${proposal.id}?email=${customerEmail}" 
-                    style="display: inline-block; padding: 12px 24px; background-color: #dc2626; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; font-family: 'Inter', sans-serif;">
-                    ❌ Decline Proposal
-                  </a>
-                </td>
-              </tr>
-            </table>
-
-            <!-- Company Info -->
-            <div style="background-color: #f3f4f6; padding: 20px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #6b7280; font-family: 'Inter', sans-serif;">
-              <h3 style="color: #1f2937; margin: 0 0 12px 0; font-size: 14px; font-family: 'Nunito', sans-serif;">🏢 Company Details:</h3>
-              <p style="margin: 6px 0; color: #4b5563; font-size: 14px;">
-                <strong style="font-family: 'Nunito', sans-serif;">${company.businessName}</strong><br>
-                ${company.email ? `📧 ${company.email}<br>` : ''}
-                ${company.mobileNumber ? `📱 ${company.mobileNumber}<br>` : ''}
-                ${company.address ? `📍 ${company.address}<br>` : ''}
-                ${company.website ? `🌐 ${company.website}<br>` : ''}
-              </p>
-            </div>
-
-            <!-- Terms -->
-            <div style="background-color: #fff7ed; padding: 20px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #ea580c; font-size: 13px; font-family: 'Inter', sans-serif;">
-              <h3 style="color: #1f2937; margin: 0 0 12px 0; font-size: 14px; font-family: 'Nunito', sans-serif;">⚖️ Terms & Conditions:</h3>
-              <ul style="color: #4b5563; margin: 0; padding-left: 20px;">
-                <li style="margin-bottom: 6px;">50% deposit required to begin the project</li>
-                <li style="margin-bottom: 6px;">Balance due upon project completion</li>
-                <li>Timeline begins after deposit is received</li>
-              </ul>
-            </div>
-
-            <p style="color: #6b7280; font-size: 13px; margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 20px; font-family: 'Inter', sans-serif;">
-              If you have any questions about this proposal or would like to discuss the details further, please don't hesitate to reach out. We look forward to working with you!
-            </p>
-          </div>
-
-          <!-- Footer -->
-          <div style="background-color: #f3f4f6; padding: 20px; text-align: center; color: #6b7280; font-size: 12px; font-family: 'Inter', sans-serif;">
-            <p style="margin: 0;">This is an automated email. Please do not reply directly to this address.</p>
-            <p style="margin: 8px 0 0 0;">© 2025 ${company.businessName}. All rights reserved.</p>
-          </div>
-        </div>
-      </body>
-    </html>
-  `;
+  if (logoAttachment) {
+    attachments.push(logoAttachment);
+  }
 
   const mailOptions = {
     from: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER,
     to: customerEmail,
     subject: `Proposal: ${proposal.projectTitle} - ${company.businessName}`,
     html: emailBody,
-    attachments: [
-      {
-        filename: `${proposal.projectTitle || 'proposal'}.pdf`,
-        content: pdfBuffer,
-        contentType: 'application/pdf',
-      },
-    ],
+    attachments,
   };
 
   return transporter.sendMail(mailOptions);
