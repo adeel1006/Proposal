@@ -1,34 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import Link from 'next/link';
 import { CompanyBranding } from '@/app/lib/proposalTypes';
 import CompanyBrandingForm from '@/app/components/CompanyBrandingForm';
+import { useCompanies } from '@/lib/hooks/useCompanies';
 
 export default function CompaniesPage() {
-  const [isHydrated, setIsHydrated] = useState(false);
-  const [companies, setCompanies] = useState<CompanyBranding[]>([]);
+  const { companies, loading, error, createCompany, updateCompany, deleteCompany } = useCompanies();
   const [showForm, setShowForm] = useState(false);
   const [editingCompany, setEditingCompany] = useState<CompanyBranding | null>(null);
-
-  // Load companies from localStorage
-  useEffect(() => {
-    setIsHydrated(true);
-    const saved = localStorage.getItem('companies');
-    if (saved) {
-      try {
-        setCompanies(JSON.parse(saved));
-      } catch (e) {
-        console.error('Failed to load companies:', e);
-      }
-    }
-  }, []);
-
-  // Save companies to localStorage
-  useEffect(() => {
-    if (isHydrated) {
-      localStorage.setItem('companies', JSON.stringify(companies));
-    }
-  }, [companies, isHydrated]);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const handleAdd = () => {
     setEditingCompany(null);
@@ -42,22 +24,40 @@ export default function CompaniesPage() {
 
   const handleDelete = (id: string) => {
     if (window.confirm('Are you sure you want to delete this company branding?')) {
-      setCompanies((prev) => prev.filter((c) => c.id !== id));
+      deleteCompany(id)
+        .then(() => {
+          setMessage({ type: 'success', text: 'Company deleted successfully' });
+          setTimeout(() => setMessage(null), 3000);
+        })
+        .catch(() => {
+          setMessage({ type: 'error', text: 'Failed to delete company' });
+          setTimeout(() => setMessage(null), 3000);
+        });
     }
   };
 
   const handleSave = (company: CompanyBranding) => {
-    if (editingCompany) {
-      // Update existing
-      setCompanies((prev) =>
-        prev.map((c) => (c.id === company.id ? company : c))
-      );
-    } else {
-      // Add new
-      setCompanies((prev) => [...prev, company]);
-    }
-    setShowForm(false);
-    setEditingCompany(null);
+    const saveAction = editingCompany
+      ? updateCompany(company)
+      : createCompany(company);
+
+    saveAction
+      .then(() => {
+        setMessage({
+          type: 'success',
+          text: editingCompany ? 'Company updated successfully' : 'Company created successfully',
+        });
+        setTimeout(() => setMessage(null), 3000);
+        setShowForm(false);
+        setEditingCompany(null);
+      })
+      .catch(() => {
+        setMessage({
+          type: 'error',
+          text: editingCompany ? 'Failed to update company' : 'Failed to create company',
+        });
+        setTimeout(() => setMessage(null), 3000);
+      });
   };
 
   const handleCancel = () => {
@@ -65,8 +65,8 @@ export default function CompaniesPage() {
     setEditingCompany(null);
   };
 
-  if (!isHydrated) {
-    return <div className="p-6 text-center">Loading...</div>;
+  if (loading) {
+    return <div className="p-6 text-center">Loading companies...</div>;
   }
 
   return (
@@ -79,6 +79,26 @@ export default function CompaniesPage() {
             Manage your company brandings and use them when creating proposals
           </p>
         </div>
+
+        {/* Message Alert */}
+        {message && (
+          <div
+            className={`mb-4 p-4 rounded-lg ${
+              message.type === 'success'
+                ? 'bg-green-100 text-green-800 border border-green-300'
+                : 'bg-red-100 text-red-800 border border-red-300'
+            }`}
+          >
+            {message.text}
+          </div>
+        )}
+
+        {/* Error Alert */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-100 text-red-800 rounded-lg border border-red-300">
+            Error: {error}
+          </div>
+        )}
 
         {/* Show form if in edit/add mode */}
         {showForm ? (
@@ -287,18 +307,18 @@ export default function CompaniesPage() {
 
         {/* Navigation */}
         <div className="mt-8 flex gap-3">
-          <a
+          <Link
             href="/admin/proposals"
             className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
           >
-            ← Back to Proposals
-          </a>
-          <a
+            Back to Proposals
+          </Link>
+          <Link
             href="/"
             className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
           >
-            ← Back to Home
-          </a>
+            Back to Home
+          </Link>
         </div>
       </div>
     </div>

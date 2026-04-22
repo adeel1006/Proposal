@@ -41,7 +41,7 @@ export default function ProposalDashboard({
       notes, 
       validUntil 
     });
-  }, [clientName, projectTitle, selectedItems, notes, validUntil, allItems]);
+  }, [clientName, projectTitle, selectedItems, notes, validUntil, allItems, onItemsChange]);
 
   const handleAddItem = (e: React.FormEvent) => {
     e.preventDefault();

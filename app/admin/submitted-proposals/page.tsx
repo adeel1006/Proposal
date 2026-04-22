@@ -65,6 +65,7 @@ export default function SubmittedProposalsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedProposal, setSelectedProposal] = useState<SubmittedProposal | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadProposals = async () => {
@@ -89,6 +90,32 @@ export default function SubmittedProposalsPage() {
 
     loadProposals();
   }, []);
+
+  const handleDeleteProposal = async (proposalId: string) => {
+    const confirmed = window.confirm('Delete this submitted proposal? This cannot be undone.');
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setDeletingId(proposalId);
+      const response = await fetch(`/api/proposals?id=${proposalId}`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to delete proposal');
+      }
+
+      setProposals((prev) => prev.filter((proposal) => proposal.id !== proposalId));
+      setSelectedProposal((prev) => (prev?.id === proposalId ? null : prev));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete proposal');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
@@ -136,6 +163,7 @@ export default function SubmittedProposalsPage() {
                   <th className="px-4 py-3 font-semibold">Total</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold">Submitted At</th>
+                  <th className="px-4 py-3 font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -163,6 +191,23 @@ export default function SubmittedProposalsPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3">{formatDate(proposal.submitted_at)}</td>
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleDeleteProposal(proposal.id);
+                          }}
+                          disabled={deletingId === proposal.id}
+                          className={`rounded px-3 py-1.5 text-xs font-medium text-white ${
+                            deletingId === proposal.id
+                              ? 'cursor-not-allowed bg-red-300'
+                              : 'bg-red-600 hover:bg-red-700'
+                          }`}
+                        >
+                          {deletingId === proposal.id ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}

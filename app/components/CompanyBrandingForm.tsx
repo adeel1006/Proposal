@@ -23,7 +23,10 @@ export default function CompanyBrandingForm({ company, onSave, onCancel }: Compa
     }
   );
 
-  const handleChange = (field: keyof CompanyBranding, value: any) => {
+  const handleChange = <K extends keyof CompanyBranding>(
+    field: K,
+    value: CompanyBranding[K]
+  ) => {
     setFormData((prev) => ({
       ...prev,
       [field]: value,

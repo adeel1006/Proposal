@@ -3,6 +3,12 @@
  * POST /api/export-to-sheets
  */
 
+type ExportItem = {
+  id: string;
+  name: string;
+  price: number;
+};
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -28,12 +34,12 @@ export async function POST(request: Request) {
     }
 
     // Prepare the data for Google Sheets
-    const selectedItemsList = items.filter((item: any) =>
+    const selectedItemsList = (items as ExportItem[]).filter((item) =>
       selectedItems.includes(item.id)
     );
 
     const itemsText = selectedItemsList
-      .map((item: any) => `${item.name} - $${item.price.toFixed(2)}`)
+      .map((item) => `${item.name} - $${item.price.toFixed(2)}`)
       .join(" | ");
 
     // Create rows to append

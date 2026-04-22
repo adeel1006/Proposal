@@ -1,11 +1,6 @@
 // Note: html2pdf.js is loaded via script tag in layout.tsx
 // This file only contains helper functions to generate HTML for PDF
 
-interface PDFGeneratorOptions {
-  filename: string;
-  title: string;
-}
-
 export function generateProposalHTML(
   proposal: {
     id: string;

@@ -7,14 +7,40 @@ import { generateProposalHTML } from '@/lib/clientPdfService';
 import {
   Proposal,
   ProposalItem,
-  CompanyBranding,
   DEFAULT_ITEMS,
   DEFAULT_TERMS,
   generateProposalId,
   getSelectedItemsTotal,
 } from '@/app/lib/proposalTypes';
+import { useCompanies } from '@/lib/hooks/useCompanies';
+import { useServices } from '@/lib/hooks/useServices';
+import { useDraftProposals } from '@/lib/hooks/useDraftProposals';
+
+type Html2PdfInstance = {
+  set: (options: Record<string, unknown>) => Html2PdfInstance;
+  from: (element: HTMLElement) => Html2PdfInstance;
+  outputPdf: (outputType: 'dataurlstring') => Promise<string>;
+};
+
+type Html2PdfFactory = () => Html2PdfInstance;
+
+function ensureProposalId(proposal: Proposal): Proposal {
+  if (proposal.id && proposal.id.trim() !== '') {
+    return proposal;
+  }
+
+  return {
+    ...proposal,
+    id: generateProposalId(),
+  };
+}
 
 export default function AdminDashboard() {
+  const { companies, loading: companiesLoading } = useCompanies();
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
+  const { services: companyServices } = useServices(selectedCompanyId);
+  const { saveDraft } = useDraftProposals();
+
   const [proposal, setProposal] = useState<Proposal>({
     id: '',
     companyId: '',
@@ -25,58 +51,28 @@ export default function AdminDashboard() {
     terms: DEFAULT_TERMS,
   });
 
-  const [companies, setCompanies] = useState<CompanyBranding[]>([]);
-  const [selectedCompany, setSelectedCompany] = useState<CompanyBranding | null>(null);
-
   const [activeTab, setActiveTab] = useState<'general' | 'items' | 'preview'>('general');
   const [saveMessage, setSaveMessage] = useState('');
   const [isHydrated, setIsHydrated] = useState(false);
   const [customerEmail, setCustomerEmail] = useState('');
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const selectedCompany = companies.find((c) => c.id === selectedCompanyId) || null;
+  const setTimedMessage = (message: string, durationMs = 3000) => {
+    setSaveMessage(message);
+    setTimeout(() => setSaveMessage(''), durationMs);
+  };
 
-  // Load companies and proposal from localStorage & initialize ID on client side only
+  // Load proposal draft from localStorage & initialize ID on client side only
   useEffect(() => {
-    let parsedCompanies: CompanyBranding[] = [];
-
-    const savedCompanies = localStorage.getItem('companies');
-    if (savedCompanies) {
-      try {
-        parsedCompanies = JSON.parse(savedCompanies);
-        setCompanies(parsedCompanies);
-      } catch (e) {
-        console.error('Error loading companies:', e);
-      }
-    }
-
     const savedProposal = localStorage.getItem('currentProposal');
     if (savedProposal) {
       try {
-        let loadedProposal = JSON.parse(savedProposal);
-
-        if (loadedProposal.companyId) {
-          const company = parsedCompanies.find((c) => c.id === loadedProposal.companyId);
-          if (company) {
-            setSelectedCompany(company);
-            
-            // Load company-specific services if they exist
-            const savedCompanyServices = localStorage.getItem(`company_services_${company.id}`);
-            if (savedCompanyServices) {
-              try {
-                const parsedServices = JSON.parse(savedCompanyServices);
-                if (Array.isArray(parsedServices) && parsedServices.length > 0) {
-                  loadedProposal = {
-                    ...loadedProposal,
-                    items: parsedServices,
-                  };
-                }
-              } catch (e) {
-                console.error('Error loading company services:', e);
-              }
-            }
-          }
+        const loadedProposal = JSON.parse(savedProposal) as Proposal;
+        const normalizedProposal = ensureProposalId(loadedProposal);
+        setProposal(normalizedProposal);
+        if (normalizedProposal.companyId) {
+          setSelectedCompanyId(normalizedProposal.companyId);
         }
-        
-        setProposal(loadedProposal);
       } catch (e) {
         console.error('Error loading proposal:', e);
       }
@@ -90,10 +86,44 @@ export default function AdminDashboard() {
     setIsHydrated(true);
   }, []);
 
+  // Keep proposal services in sync with selected company services from DB
+  useEffect(() => {
+    if (!selectedCompanyId) {
+      return;
+    }
+
+    setProposal((prev) => {
+      const allowedItemIds = new Set(companyServices.map((item) => item.id));
+      return {
+        ...prev,
+        items: companyServices,
+        selectedItems: prev.selectedItems.filter((itemId) => allowedItemIds.has(itemId)),
+      };
+    });
+  }, [selectedCompanyId, companyServices]);
+
   // Auto-save to localStorage
   useEffect(() => {
     localStorage.setItem('currentProposal', JSON.stringify(proposal));
   }, [proposal]);
+
+  // Auto-save draft to database
+  useEffect(() => {
+    if (!isHydrated || !proposal.id) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      saveDraft({
+        ...proposal,
+        status: 'draft',
+      }).catch((err) => {
+        console.error('Failed to auto-save draft:', err);
+      });
+    }, 2000);
+
+    return () => clearTimeout(timeout);
+  }, [proposal, isHydrated, saveDraft]);
 
   const handleSaveItem = (updatedItem: ProposalItem) => {
     setProposal((prev) => ({
@@ -147,31 +177,16 @@ export default function AdminDashboard() {
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
-    setSaveMessage('✅ Proposal exported!');
-    setTimeout(() => setSaveMessage(''), 3000);
+    setTimedMessage('✅ Proposal exported!');
   };
 
   const handleNewProposal = () => {
     if (confirm('Create a new proposal? Current changes will be saved.')) {
-      // Load company-specific services if a company is selected
-      let itemsToUse = DEFAULT_ITEMS;
-      if (selectedCompany) {
-        const savedCompanyServices = localStorage.getItem(`company_services_${selectedCompany.id}`);
-        if (savedCompanyServices) {
-          try {
-            const parsedServices = JSON.parse(savedCompanyServices);
-            if (Array.isArray(parsedServices) && parsedServices.length > 0) {
-              itemsToUse = parsedServices;
-            }
-          } catch (e) {
-            console.error('Error loading company services:', e);
-          }
-        }
-      }
+      const itemsToUse = selectedCompanyId ? companyServices : DEFAULT_ITEMS;
 
       setProposal({
         id: generateProposalId(),
-        companyId: selectedCompany?.id || '',
+        companyId: selectedCompanyId || '',
         clientName: '',
         projectTitle: '',
         selectedItems: [],
@@ -182,60 +197,34 @@ export default function AdminDashboard() {
   };
 
   const handleSelectCompany = (companyId: string) => {
-    const company = companies.find(c => c.id === companyId);
-    if (company) {
-      setSelectedCompany(company);
-      
-      // Load company-specific services from localStorage
-      let companyServices: ProposalItem[] = DEFAULT_ITEMS; // fallback to defaults
-      const savedCompanyServices = localStorage.getItem(`company_services_${companyId}`);
-      
-      if (savedCompanyServices) {
-        try {
-          const parsedServices = JSON.parse(savedCompanyServices);
-          if (Array.isArray(parsedServices) && parsedServices.length > 0) {
-            companyServices = parsedServices;
-          }
-        } catch (e) {
-          console.error('Error loading company services:', e);
-        }
-      }
-      
-      setProposal((prev) => ({
-        ...prev,
-        companyId: company.id,
-        items: companyServices,
-        selectedItems: [], // Reset selection since items changed
-      }));
-    }
+    setSelectedCompanyId(companyId);
+    setProposal((prev) => ({
+      ...prev,
+      companyId,
+      items: [],
+      selectedItems: [],
+    }));
   };
 
   const handleSendProposalEmail = async () => {
     if (!customerEmail || !proposal.clientName) {
-      setSaveMessage('❌ Please enter customer email and client name');
-      setTimeout(() => setSaveMessage(''), 3000);
+      setTimedMessage('❌ Please enter customer email and client name');
       return;
     }
 
     if (!selectedCompany) {
-      setSaveMessage('❌ Please select a company');
-      setTimeout(() => setSaveMessage(''), 3000);
+      setTimedMessage('❌ Please select a company');
       return;
     }
 
     if (proposal.selectedItems.length === 0) {
-      setSaveMessage('❌ Please select at least one service');
-      setTimeout(() => setSaveMessage(''), 3000);
+      setTimedMessage('❌ Please select at least one service');
       return;
     }
 
     // Ensure proposal has an ID
-    let proposalWithId = proposal;
-    if (!proposal.id || proposal.id.trim() === '') {
-      proposalWithId = {
-        ...proposal,
-        id: generateProposalId(),
-      };
+    const proposalWithId = ensureProposalId(proposal);
+    if (proposalWithId.id !== proposal.id) {
       setProposal(proposalWithId);
     }
 
@@ -244,7 +233,7 @@ export default function AdminDashboard() {
 
     try {
       // Validate PDF library
-      const html2pdf = (window as any).html2pdf;
+      const html2pdf = (window as Window & { html2pdf?: Html2PdfFactory }).html2pdf;
       if (!html2pdf) {
         throw new Error('PDF library (html2pdf) not loaded. Please refresh the page and try again.');
       }
@@ -293,7 +282,7 @@ export default function AdminDashboard() {
       setSaveMessage('⏳ Generating PDF...');
 
       const pdfBase64 = await new Promise<string>((resolve, reject) => {
-        let timeoutId: NodeJS.Timeout | null = null;
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
         try {
           timeoutId = setTimeout(() => {
@@ -322,7 +311,7 @@ export default function AdminDashboard() {
               }
               resolve(base64);
             })
-            .catch((error: any) => {
+            .catch((error: unknown) => {
               if (timeoutId) clearTimeout(timeoutId);
               reject(error);
             });
@@ -351,18 +340,15 @@ export default function AdminDashboard() {
       const result = await response.json();
 
       if (response.ok) {
-        setSaveMessage(`✅ ${result.message}`);
+        setTimedMessage(`✅ ${result.message}`, 5000);
         setCustomerEmail('');
-        setTimeout(() => setSaveMessage(''), 5000);
       } else {
-        setSaveMessage(`❌ ${result.error || 'Failed to send proposal'}`);
-        setTimeout(() => setSaveMessage(''), 5000);
+        setTimedMessage(`❌ ${result.error || 'Failed to send proposal'}`, 5000);
       }
     } catch (error) {
       console.error('Error sending proposal:', error);
       const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-      setSaveMessage(`❌ ${errorMessage}`);
-      setTimeout(() => setSaveMessage(''), 5000);
+      setTimedMessage(`❌ ${errorMessage}`, 5000);
     } finally {
       setIsSendingEmail(false);
     }
@@ -376,42 +362,6 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <div className="bg-gray-900 text-white p-6 shadow-lg">
-        <div className="max-w-7xl mx-auto flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">🛠️ Admin Dashboard</h1>
-            <p className="text-gray-300">Manage proposals, edit all details, customize for clients</p>
-          </div>
-          <div className="flex gap-2">
-            <a
-              href="/admin/companies"
-              className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm"
-            >
-              🏢 Company Brandings
-            </a>
-            <a
-              href="/admin/services"
-              className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 text-sm"
-            >
-              🛍️ Services
-            </a>
-            <a
-              href="/admin/submitted-proposals"
-              className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700 text-sm"
-            >
-              Submitted Proposals
-            </a>
-            <a
-              href="/"
-              className="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-800 text-sm"
-            >
-              🏠 Home
-            </a>
-          </div>
-        </div>
-      </div>
-
       <div className="max-w-7xl mx-auto p-6">
         {/* Save Message */}
         {saveMessage && (
@@ -489,7 +439,11 @@ export default function AdminDashboard() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Select Company *
                     </label>
-                    {companies.length === 0 ? (
+                    {companiesLoading ? (
+                      <div className="p-3 bg-blue-50 border border-blue-300 rounded text-sm text-blue-800">
+                        Loading companies...
+                      </div>
+                    ) : companies.length === 0 ? (
                       <div className="p-3 bg-yellow-50 border border-yellow-300 rounded text-sm text-yellow-800">
                         <p>No companies found. </p>
                         <a href="/admin/companies" className="text-blue-600 hover:underline font-medium">
@@ -498,7 +452,7 @@ export default function AdminDashboard() {
                       </div>
                     ) : (
                       <select
-                        value={proposal.companyId || ''}
+                        value={selectedCompanyId || ''}
                         onChange={(e) => handleSelectCompany(e.target.value)}
                         className="w-full border rounded px-3 py-2"
                         required
@@ -714,6 +668,7 @@ export default function AdminDashboard() {
                   items={proposal.items}
                   notes={proposal.notes}
                   validUntil={proposal.validUntil}
+                  showDownloadHtml={false}
                 />
               </div>
             </div>

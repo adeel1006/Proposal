@@ -14,10 +14,13 @@ export default function ItemEditor({ item, onSave, onDelete, isNew }: ItemEditor
   const [editedItem, setEditedItem] = useState<ProposalItem>(item);
   const [isEditing, setIsEditing] = useState(isNew);
 
-  const handleChange = (field: keyof ProposalItem, value: any) => {
+  const handleChange = (field: keyof ProposalItem, value: string | number) => {
     setEditedItem((prev) => ({
       ...prev,
-      [field]: field === 'price' || field === 'quantity' ? parseFloat(value) || 0 : value,
+      [field]:
+        field === 'price' || field === 'quantity'
+          ? parseFloat(String(value)) || 0
+          : value,
     }));
   };
 

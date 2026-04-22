@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import ProposalDashboard from '@/app/components/ProposalDashboard';
 import ProposalPreview from '@/app/components/ProposalPreview';
-import { ProposalItem, DEFAULT_ITEMS, getSelectedItemsTotal } from '@/app/lib/proposalTypes';
+import { DEFAULT_ITEMS, getSelectedItemsTotal } from '@/app/lib/proposalTypes';
 
 export default function ProposalMaker() {
   const [proposalData, setProposalData] = useState({

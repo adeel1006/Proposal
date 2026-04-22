@@ -92,3 +92,29 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "Proposal ID is required" },
+        { status: 400 }
+      );
+    }
+
+    const supabase = getSupabaseAdminClient();
+    const { error } = await supabase.from("proposals").delete().eq("id", id);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, message: "Proposal deleted" });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to delete proposal";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}

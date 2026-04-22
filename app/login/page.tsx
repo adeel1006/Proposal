@@ -1,10 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -76,7 +74,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+        {/* <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
           Default admin credentials:
           <div className="mt-2 text-sm text-slate-900">
             <strong>Username:</strong> admin
@@ -86,7 +84,7 @@ export default function LoginPage() {
           <p className="mt-3 text-xs text-slate-500">
             You can override these values using `ADMIN_USERNAME` and `ADMIN_PASSWORD` in your environment.
           </p>
-        </div>
+        </div> */}
       </div>
     </div>
   );

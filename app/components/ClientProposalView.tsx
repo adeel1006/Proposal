@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { ProposalItem, CompanyBranding } from '@/app/lib/proposalTypes';
 
 interface ClientProposalViewProps {
@@ -34,23 +33,16 @@ export default function ClientProposalView({
   items,
   notes,
   proposalDate,
-  createdAt,
   company,
   terms,
   onAccept,
   onReject,
 }: ClientProposalViewProps) {
-  const [isHydrated, setIsHydrated] = useState(false);
-
-  useEffect(() => {
-    setIsHydrated(true);
-  }, []);
-
   const selectedItemsList = items.filter((i) => selectedItems.includes(i.id));
   const total = selectedItemsList.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0);
 
   const formatDate = (date: string | undefined): string => {
-    if (!date) return new Date().toLocaleDateString();
+    if (!date) return '-';
     try {
       return new Date(date).toLocaleDateString();
     } catch {
@@ -96,11 +88,9 @@ export default function ClientProposalView({
           {/* Header */}
           <div className="border-b-2 border-gray-300 pb-6 mb-6">
             <div className="text-3xl font-bold text-gray-900 mb-2">PROJECT PROPOSAL</div>
-            {isHydrated && (
-              <div className="text-sm text-gray-600">
-                Proposal Date: {formatDate(proposalDate)}
-              </div>
-            )}
+            <div className="text-sm text-gray-600" suppressHydrationWarning>
+              Proposal Date: {formatDate(proposalDate)}
+            </div>
           </div>
 
           {/* From & To */}

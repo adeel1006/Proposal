@@ -1,15 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { CompanyBranding, ProposalItem } from '@/app/lib/proposalTypes';
+import { useState } from 'react';
+import Link from 'next/link';
+import { ProposalItem } from '@/app/lib/proposalTypes';
+import { useCompanies } from '@/lib/hooks/useCompanies';
+import { useServices } from '@/lib/hooks/useServices';
 
 export default function ServicesPage() {
-  const [isHydrated, setIsHydrated] = useState(false);
-  const [companies, setCompanies] = useState<CompanyBranding[]>([]);
+  const { companies, loading: companiesLoading } = useCompanies();
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
-  const [selectedCompany, setSelectedCompany] = useState<CompanyBranding | null>(null);
-  const [companyServices, setCompanyServices] = useState<ProposalItem[]>([]);
+  const { services: companyServices, loading: servicesLoading, createService, deleteService } = useServices(selectedCompanyId);
+  
   const [showAddService, setShowAddService] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [newService, setNewService] = useState<ProposalItem>({
     id: '',
     name: '',
@@ -20,88 +23,64 @@ export default function ServicesPage() {
     quantity: 1,
   });
 
-  // Load companies and services from localStorage
-  useEffect(() => {
-    setIsHydrated(true);
-    const savedCompanies = localStorage.getItem('companies');
-    if (savedCompanies) {
-      try {
-        const parsed = JSON.parse(savedCompanies);
-        setCompanies(parsed);
-      } catch (e) {
-        console.error('Failed to load companies:', e);
-      }
-    }
-  }, []);
-
-  // Load services for selected company
-  useEffect(() => {
-    if (selectedCompanyId) {
-      const company = companies.find((c) => c.id === selectedCompanyId);
-      if (company) {
-        setSelectedCompany(company);
-        // Load company-specific services from localStorage
-        const servicesKey = `company_services_${selectedCompanyId}`;
-        const saved = localStorage.getItem(servicesKey);
-        if (saved) {
-          try {
-            setCompanyServices(JSON.parse(saved));
-          } catch (e) {
-            console.error('Failed to load services:', e);
-            setCompanyServices([]);
-          }
-        } else {
-          setCompanyServices([]);
-        }
-      }
-    }
-  }, [selectedCompanyId, companies]);
-
-  // Save services to localStorage
-  useEffect(() => {
-    if (selectedCompanyId && isHydrated) {
-      const servicesKey = `company_services_${selectedCompanyId}`;
-      localStorage.setItem(servicesKey, JSON.stringify(companyServices));
-    }
-  }, [companyServices, selectedCompanyId, isHydrated]);
+  const selectedCompany = companies.find((c) => c.id === selectedCompanyId) || null;
 
   const handleAddService = () => {
     if (!newService.name || !newService.description) {
-      alert('Please fill in service name and description');
+      setMessage({ type: 'error', text: 'Please fill in service name and description' });
+      setTimeout(() => setMessage(null), 3000);
       return;
     }
-    const service: ProposalItem = {
+
+    if (!selectedCompanyId) {
+      setMessage({ type: 'error', text: 'Please select a company first' });
+      setTimeout(() => setMessage(null), 3000);
+      return;
+    }
+
+    const service: Omit<ProposalItem, 'id'> & { companyId: string } = {
       ...newService,
-      id: `service-${Date.now()}`,
+      companyId: selectedCompanyId,
       currency: selectedCompany?.currency || 'USD',
     };
-    setCompanyServices((prev) => [...prev, service]);
-    setNewService({
-      id: '',
-      name: '',
-      description: '',
-      price: 0,
-      currency: selectedCompany?.currency || 'USD',
-      category: 'General',
-      quantity: 1,
-    });
-    setShowAddService(false);
-  };
 
-  const handleUpdateService = (id: string, updated: ProposalItem) => {
-    setCompanyServices((prev) =>
-      prev.map((s) => (s.id === id ? updated : s))
-    );
+    createService(service)
+      .then(() => {
+        setMessage({ type: 'success', text: 'Service added successfully' });
+        setTimeout(() => setMessage(null), 3000);
+        setNewService({
+          id: '',
+          name: '',
+          description: '',
+          price: 0,
+          currency: selectedCompany?.currency || 'USD',
+          category: 'General',
+          quantity: 1,
+        });
+        setShowAddService(false);
+      })
+      .catch(() => {
+        setMessage({ type: 'error', text: 'Failed to add service' });
+        setTimeout(() => setMessage(null), 3000);
+      });
   };
 
   const handleDeleteService = (id: string) => {
     if (window.confirm('Delete this service?')) {
-      setCompanyServices((prev) => prev.filter((s) => s.id !== id));
+      deleteService(id)
+        .then(() => {
+          setMessage({ type: 'success', text: 'Service deleted successfully' });
+          setTimeout(() => setMessage(null), 3000);
+        })
+        .catch(() => {
+          setMessage({ type: 'error', text: 'Failed to delete service' });
+          setTimeout(() => setMessage(null), 3000);
+        });
     }
   };
 
-  if (!isHydrated) {
-    return <div className="p-6 text-center">Loading...</div>;
+  if (companiesLoading) {
+    return <div className="p-6 text-center">Loading companies...</div>;
   }
 
   return (
@@ -115,6 +94,19 @@ export default function ServicesPage() {
           </p>
         </div>
 
+        {/* Message Alert */}
+        {message && (
+          <div
+            className={`mb-4 p-4 rounded-lg ${
+              message.type === 'success'
+                ? 'bg-green-100 text-green-800 border border-green-300'
+                : 'bg-red-100 text-red-800 border border-red-300'
+            }`}
+          >
+            {message.text}
+          </div>
+        )}
+
         {/* Company Selector */}
         <div className="mb-6 bg-white p-6 rounded-lg shadow">
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -122,7 +114,7 @@ export default function ServicesPage() {
           </label>
           {companies.length === 0 ? (
             <div className="p-4 bg-yellow-50 border border-yellow-300 rounded text-yellow-800">
-              No companies found. <a href="/admin/companies" className="text-blue-600 hover:underline font-medium">Create a company first</a>
+              No companies found. <Link href="/admin/companies" className="text-blue-600 hover:underline font-medium">Create a company first</Link>
             </div>
           ) : (
             <select
@@ -313,8 +305,15 @@ export default function ServicesPage() {
               </div>
             )}
 
+            {/* Loading State */}
+            {servicesLoading && (
+              <div className="text-center py-12 bg-gray-50 rounded">
+                <p className="text-gray-500">Loading services...</p>
+              </div>
+            )}
+
             {/* Services List */}
-            {companyServices.length === 0 ? (
+            {!servicesLoading && companyServices.length === 0 ? (
               <div className="text-center py-12 bg-gray-50 rounded border-2 border-dashed">
                 <p className="text-gray-500 text-lg">No services added yet</p>
                 <button
@@ -371,18 +370,18 @@ export default function ServicesPage() {
 
         {/* Navigation */}
         <div className="mt-8 flex gap-3">
-          <a
+          <Link
             href="/admin/companies"
             className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
           >
-            ← Back to Companies
-          </a>
-          <a
+            Back to Companies
+          </Link>
+          <Link
             href="/"
             className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
           >
-            ← Back to Home
-          </a>
+            Back to Home
+          </Link>
         </div>
       </div>
     </div>

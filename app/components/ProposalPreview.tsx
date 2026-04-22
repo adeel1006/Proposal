@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { ProposalItem } from '@/app/lib/proposalTypes';
 
 interface ProposalPreviewProps {
@@ -10,6 +9,7 @@ interface ProposalPreviewProps {
   items: ProposalItem[];
   notes?: string;
   validUntil?: string;
+  showDownloadHtml?: boolean;
 }
 
 export default function ProposalPreview({
@@ -19,13 +19,8 @@ export default function ProposalPreview({
   items,
   notes,
   validUntil,
+  showDownloadHtml = true,
 }: ProposalPreviewProps) {
-  const [isHydrated, setIsHydrated] = useState(false);
-
-  useEffect(() => {
-    setIsHydrated(true);
-  }, []);
-
   const selectedItemsList = items.filter((i) => selectedItems.includes(i.id));
   const total = selectedItemsList.reduce((sum, item) => sum + item.price, 0);
 
@@ -65,12 +60,14 @@ export default function ProposalPreview({
         >
           📄 Print / Save as PDF
         </button>
-        <button
-          onClick={handleDownloadHTML}
-          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-        >
-          ⬇️ Download HTML
-        </button>
+        {showDownloadHtml && (
+          <button
+            onClick={handleDownloadHTML}
+            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+          >
+            ⬇️ Download HTML
+          </button>
+        )}
       </div>
 
       {/* Proposal Content */}
@@ -81,12 +78,10 @@ export default function ProposalPreview({
         {/* Header */}
         <div className="border-b-2 border-gray-300 pb-6 mb-6">
           <div className="text-3xl font-bold text-gray-900 mb-2">PROJECT PROPOSAL</div>
-          {isHydrated && (
-            <div className="text-sm text-gray-600">
-              Date: {formatDate(undefined)}
-              {validUntil && ` | Valid Until: ${formatDate(validUntil)}`}
-            </div>
-          )}
+          <div className="text-sm text-gray-600" suppressHydrationWarning>
+            Date: {formatDate(undefined)}
+            {validUntil && ` | Valid Until: ${formatDate(validUntil)}`}
+          </div>
         </div>
 
         {/* Client Info */}

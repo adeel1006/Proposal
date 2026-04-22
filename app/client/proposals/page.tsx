@@ -12,29 +12,36 @@ export default function ClientProposalPage() {
   const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
-    // Load proposal and company branding from localStorage
-    const savedProposal = localStorage.getItem('currentProposal');
-    const savedCompanies = localStorage.getItem('companies');
+    const loadProposalAndCompany = async () => {
+      const savedProposal = localStorage.getItem('currentProposal');
 
-    if (savedProposal) {
-      try {
-        const parsedProposal = JSON.parse(savedProposal);
-        setProposal(parsedProposal);
+      if (savedProposal) {
+        try {
+          const parsedProposal = JSON.parse(savedProposal);
+          setProposal(parsedProposal);
 
-        // Find and set company branding
-        if (parsedProposal.companyId && savedCompanies) {
-          const companies = JSON.parse(savedCompanies);
-          const foundCompany = companies.find((c: CompanyBranding) => c.id === parsedProposal.companyId);
-          if (foundCompany) {
-            setCompany(foundCompany);
+          if (parsedProposal.companyId) {
+            const response = await fetch('/api/companies');
+            const result = await response.json();
+            if (response.ok && Array.isArray(result.data)) {
+              const foundCompany = result.data.find(
+                (c: CompanyBranding) => c.id === parsedProposal.companyId
+              );
+              if (foundCompany) {
+                setCompany(foundCompany);
+              }
+            }
           }
+        } catch (e) {
+          console.error('Error loading proposal:', e);
         }
-      } catch (e) {
-        console.error('Error loading proposal:', e);
       }
-    }
-    setLoading(false);
-    setIsHydrated(true);
+
+      setLoading(false);
+      setIsHydrated(true);
+    };
+
+    loadProposalAndCompany();
   }, []);
 
   const handleAccept = () => {
