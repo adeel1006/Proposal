@@ -11,6 +11,8 @@ import {
   DEFAULT_TERMS,
   generateProposalId,
   getSelectedItemsTotal,
+  getSelectedItemsTotalUSD,
+  getSelectedItemsTotalInCurrency,
 } from '@/app/lib/proposalTypes';
 import { useCompanies } from '@/lib/hooks/useCompanies';
 import { useServices } from '@/lib/hooks/useServices';
@@ -354,6 +356,48 @@ export default function AdminDashboard() {
     }
   };
 
+  // Currency conversion state
+  const [usdTotal, setUsdTotal] = useState<number>(0);
+  const [companyCurrencyTotal, setCompanyCurrencyTotal] = useState<number>(0);
+  const [isConverting, setIsConverting] = useState(false);
+
+  // Calculate totals with currency conversion
+  useEffect(() => {
+    const calculateTotals = async () => {
+      if (!proposal.selectedItems.length) {
+        setUsdTotal(0);
+        setCompanyCurrencyTotal(0);
+        return;
+      }
+
+      setIsConverting(true);
+      try {
+        // Calculate USD total (always in USD)
+        const usdAmount = await getSelectedItemsTotalUSD(proposal.selectedItems, proposal.items);
+        setUsdTotal(usdAmount);
+
+        // Calculate total in company currency
+        const companyCurrency = selectedCompany?.currency || 'USD';
+        const companyAmount = await getSelectedItemsTotalInCurrency(
+          proposal.selectedItems,
+          proposal.items,
+          companyCurrency
+        );
+        setCompanyCurrencyTotal(companyAmount);
+      } catch (error) {
+        console.error('Error calculating currency totals:', error);
+        // Fallback to simple total
+        const fallbackTotal = getSelectedItemsTotal(proposal.selectedItems, proposal.items);
+        setUsdTotal(fallbackTotal);
+        setCompanyCurrencyTotal(fallbackTotal);
+      } finally {
+        setIsConverting(false);
+      }
+    };
+
+    calculateTotals();
+  }, [proposal.selectedItems, proposal.items, selectedCompany?.currency]);
+
   const total = getSelectedItemsTotal(proposal.selectedItems, proposal.items);
 
   if (!isHydrated) {
@@ -669,6 +713,9 @@ export default function AdminDashboard() {
                   notes={proposal.notes}
                   validUntil={proposal.validUntil}
                   showDownloadHtml={false}
+                  currency={selectedCompany?.currency || 'USD'}
+                  usdTotal={usdTotal}
+                  companyCurrencyTotal={companyCurrencyTotal}
                 />
               </div>
             </div>
@@ -758,7 +805,15 @@ export default function AdminDashboard() {
                 </div>
                 <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-4 rounded-lg border border-orange-200">
                   <div className="text-xs text-orange-600 font-semibold uppercase tracking-wide">Total Amount</div>
-                  <div className="mt-1 font-bold text-gray-900">{selectedCompany?.currency || 'USD'} {total.toFixed(2)}</div>
+                  <div className="mt-1 font-bold text-gray-900">
+                    {selectedCompany?.currency || 'USD'} {companyCurrencyTotal.toFixed(2)}
+                  </div>
+                  {selectedCompany?.currency && selectedCompany.currency !== 'USD' && (
+                    <div className="text-sm text-orange-500 mt-1">
+                      USD {usdTotal.toFixed(2)}
+                      {isConverting && <span className="ml-1 text-xs">⟳</span>}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -822,11 +877,23 @@ export default function AdminDashboard() {
                   <div className="flex gap-12">
                     <div>
                       <div className="text-xs text-gray-300 uppercase tracking-wide">Subtotal</div>
-                      <div className="text-2xl font-bold">{selectedCompany?.currency || 'USD'} {total.toFixed(2)}</div>
+                      <div className="text-2xl font-bold">{selectedCompany?.currency || 'USD'} {companyCurrencyTotal.toFixed(2)}</div>
+                      {selectedCompany?.currency && selectedCompany.currency !== 'USD' && (
+                        <div className="text-sm text-gray-400 mt-1">
+                          USD {usdTotal.toFixed(2)}
+                          {isConverting && <span className="ml-1 text-xs">⟳</span>}
+                        </div>
+                      )}
                     </div>
                     <div>
                       <div className="text-xs text-gray-300 uppercase tracking-wide">Total</div>
-                      <div className="text-3xl font-bold">{selectedCompany?.currency || 'USD'} {total.toFixed(2)}</div>
+                      <div className="text-3xl font-bold">{selectedCompany?.currency || 'USD'} {companyCurrencyTotal.toFixed(2)}</div>
+                      {selectedCompany?.currency && selectedCompany.currency !== 'USD' && (
+                        <div className="text-sm text-gray-400 mt-1">
+                          USD {usdTotal.toFixed(2)}
+                          {isConverting && <span className="ml-1 text-xs">⟳</span>}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -896,15 +963,16 @@ export default function AdminDashboard() {
 
                 {/* Instructions */}
                 {!isSendingEmail && !saveMessage && (
-                  <div className="p-4 bg-blue-50 border border-blue-300 rounded-lg">
-                    <p className="text-sm text-blue-900">
-                      <strong>✨ What the customer will receive:</strong><br />
-                      • Professional HTML email with proposal details in a table<br />
-                      • 3 Action buttons: Save as PDF, Accept, Decline<br />
-                      • PDF attachment of the complete proposal<br />
-                      • Your company contact information
-                    </p>
-                  </div>
+                  // <div className="p-4 bg-blue-50 border border-blue-300 rounded-lg">
+                  //   <p className="text-sm text-blue-900">
+                  //     <strong>✨ What the customer will receive:</strong><br />
+                  //     • Professional HTML email with proposal details in a table<br />
+                  //     • 3 Action buttons: Save as PDF, Accept, Decline<br />
+                  //     • PDF attachment of the complete proposal<br />
+                  //     • Your company contact information
+                  //   </p>
+                  // </div>
+                  <div></div>
                 )}
               </div>
             </div>

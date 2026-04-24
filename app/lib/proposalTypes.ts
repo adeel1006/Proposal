@@ -144,6 +144,9 @@ export const DEFAULT_TERMS: ProposalTerms = {
   additionalTerms: "",
 };
 
+// Import currency conversion utilities
+import { convertToUSD, convertCurrency } from '@/lib/currencyService';
+
 export const getSelectedItemsTotal = (
   selectedIds: string[],
   items: ProposalItem[]
@@ -151,6 +154,80 @@ export const getSelectedItemsTotal = (
   return items
     .filter((item) => selectedIds.includes(item.id))
     .reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0);
+};
+
+/**
+ * Calculate total in USD with currency conversion
+ * Handles mixed currencies from different items
+ */
+export const getSelectedItemsTotalUSD = async (
+  selectedIds: string[],
+  items: ProposalItem[]
+): Promise<number> => {
+  const selectedItems = items.filter((item) => selectedIds.includes(item.id));
+
+  let totalUSD = 0;
+  for (const item of selectedItems) {
+    const itemCurrency = item.currency || 'USD';
+    const itemTotal = item.price * (item.quantity || 1);
+
+    // Convert to USD if not already in USD
+    if (itemCurrency !== 'USD') {
+      try {
+        const usdAmount = await convertToUSD(itemTotal, itemCurrency);
+        totalUSD += usdAmount;
+      } catch (error) {
+        console.error(`Failed to convert ${itemCurrency} to USD:`, error);
+        // Fallback: add as-is if conversion fails
+        totalUSD += itemTotal;
+      }
+    } else {
+      totalUSD += itemTotal;
+    }
+  }
+
+  return totalUSD;
+};
+
+/**
+ * Calculate total in company currency
+ * Converts all items to company currency for display
+ */
+export const getSelectedItemsTotalInCurrency = async (
+  selectedIds: string[],
+  items: ProposalItem[],
+  targetCurrency: string = 'USD'
+): Promise<number> => {
+  const selectedItems = items.filter((item) => selectedIds.includes(item.id));
+
+  let total = 0;
+  for (const item of selectedItems) {
+    const itemCurrency = item.currency || 'USD';
+    const itemTotal = item.price * (item.quantity || 1);
+
+    // Convert to target currency if different
+    if (itemCurrency !== targetCurrency) {
+      try {
+        const convertedAmount = await convertCurrency(itemTotal, itemCurrency, targetCurrency);
+        total += convertedAmount;
+      } catch (error) {
+        console.error(`Failed to convert ${itemCurrency} to ${targetCurrency}:`, error);
+        // Fallback: convert to USD first, then to target
+        try {
+          const usdAmount = await convertToUSD(itemTotal, itemCurrency);
+          const targetAmount = await convertCurrency(usdAmount, 'USD', targetCurrency);
+          total += targetAmount;
+        } catch (fallbackError) {
+          console.error('Fallback conversion also failed:', fallbackError);
+          total += itemTotal; // Last resort
+        }
+      }
+    } else {
+      total += itemTotal;
+    }
+  }
+
+  return total;
 };
 
 export const generateProposalId = (): string => {

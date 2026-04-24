@@ -10,6 +10,9 @@ interface ProposalPreviewProps {
   notes?: string;
   validUntil?: string;
   showDownloadHtml?: boolean;
+  currency?: string;
+  usdTotal?: number;
+  companyCurrencyTotal?: number;
 }
 
 export default function ProposalPreview({
@@ -20,6 +23,9 @@ export default function ProposalPreview({
   notes,
   validUntil,
   showDownloadHtml = true,
+  currency = 'USD',
+  usdTotal,
+  companyCurrencyTotal,
 }: ProposalPreviewProps) {
   const selectedItemsList = items.filter((i) => selectedItems.includes(i.id));
   const total = selectedItemsList.reduce((sum, item) => sum + item.price, 0);
@@ -130,7 +136,7 @@ export default function ProposalPreview({
                     <td className="py-3 font-medium text-gray-900">{item.name}</td>
                     <td className="py-3 text-gray-600 text-sm">{item.description}</td>
                     <td className="py-3 text-right font-semibold text-gray-900">
-                      ${item.price.toFixed(2)}
+                      {item.currency} {(item.price * (item.quantity || 1)).toFixed(2)}
                     </td>
                   </tr>
                 ))
@@ -150,11 +156,17 @@ export default function ProposalPreview({
               <div className="flex gap-8">
                 <div>
                   <div className="text-sm text-gray-300">SUBTOTAL</div>
-                  <div className="text-xl font-bold">${total.toFixed(2)}</div>
+                  <div className="text-xl font-bold">{currency} {(companyCurrencyTotal || total).toFixed(2)}</div>
+                  {currency !== 'USD' && usdTotal !== undefined && (
+                    <div className="text-xs text-gray-400 mt-1">USD {usdTotal.toFixed(2)}</div>
+                  )}
                 </div>
                 <div>
                   <div className="text-sm text-gray-300">TOTAL</div>
-                  <div className="text-2xl font-bold">${total.toFixed(2)}</div>
+                  <div className="text-2xl font-bold">{currency} {(companyCurrencyTotal || total).toFixed(2)}</div>
+                  {currency !== 'USD' && usdTotal !== undefined && (
+                    <div className="text-xs text-gray-400 mt-1">USD {usdTotal.toFixed(2)}</div>
+                  )}
                 </div>
               </div>
             </div>
