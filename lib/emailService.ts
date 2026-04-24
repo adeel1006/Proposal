@@ -176,7 +176,8 @@ export async function sendProposalEmail(
   customerName: string,
   proposal: Proposal,
   company: CompanyBranding,
-  items: ProposalItem[]
+  items: ProposalItem[],
+  options?: { forceFromName?: string; forceReplyTo?: string }
 ) {
   const selectedItems = items.filter((item) => proposal.selectedItems.includes(item.id));
   const subtotal = selectedItems.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0);
@@ -197,9 +198,20 @@ export async function sendProposalEmail(
     attachments.push(logoAttachment);
   }
 
+  // Dynamic company-based sender configuration
+  const smtpUser = process.env.SMTP_USER;
+  const fromName = options?.forceFromName || company.businessName;
+  
+  // Use replyToEmail if explicitly set, otherwise use company.email
+  const replyToEmail = options?.forceReplyTo || company.replyToEmail || company.email;
+
+  // Format: "Company Name <shared-smtp-email@domain.com>"
+  const fromAddress = smtpUser ? `${fromName} <${smtpUser}>` : fromName;
+
   const mailOptions = {
-    from: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER,
+    from: fromAddress,
     to: customerEmail,
+    replyTo: replyToEmail || smtpUser, // Clients reply goes to company email
     subject: `Proposal: ${proposal.projectTitle} - ${company.businessName}`,
     html: emailBody,
     attachments,

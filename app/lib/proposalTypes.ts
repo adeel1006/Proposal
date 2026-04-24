@@ -1,7 +1,7 @@
 export interface CompanyBranding {
   id: string;
   businessName: string;
-  email: string;
+  email: string; // Used as reply-to address in emails
   mobileNumber: string;
   whatsapp?: string;
   address: string;
@@ -9,6 +9,7 @@ export interface CompanyBranding {
   website?: string;
   logo?: string; // Base64 or URL
   currency: string;
+  replyToEmail?: string; // Optional: override for reply-to address (defaults to email)
   // Social Media Links
   instagram?: string;
   linkedin?: string;
@@ -18,6 +19,14 @@ export interface CompanyBranding {
   pinterest?: string;
   createdAt?: string;
   updatedAt?: string;
+  /**
+   * DYNAMIC EMAIL SENDING
+   * When a proposal is sent with this company:
+   * - From: "[businessName] <[shared-smtp@domain]>"
+   * - Reply-To: "[replyToEmail or email]"
+   * - Email body includes company logo, branding, and contact info
+   * - Clients receive professionally branded emails from their company
+   */
 }
 
 export interface ProposalItem {
