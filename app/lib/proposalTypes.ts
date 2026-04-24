@@ -58,6 +58,7 @@ export interface Proposal {
   notes?: string;
   validUntil?: string;
   proposalDate?: string;
+  paymentLink?: string;
   terms?: ProposalTerms;
   createdAt?: string;
   updatedAt?: string;

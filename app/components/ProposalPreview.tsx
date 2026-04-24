@@ -11,6 +11,7 @@ interface ProposalPreviewProps {
   validUntil?: string;
   showDownloadHtml?: boolean;
   currency?: string;
+  paymentLink?: string;
   usdTotal?: number;
   companyCurrencyTotal?: number;
 }
@@ -24,6 +25,7 @@ export default function ProposalPreview({
   validUntil,
   showDownloadHtml = true,
   currency = 'USD',
+  paymentLink,
   usdTotal,
   companyCurrencyTotal,
 }: ProposalPreviewProps) {
@@ -151,9 +153,9 @@ export default function ProposalPreview({
           </table>
 
           {/* Total */}
-          <div className="flex justify-end mb-6">
+          <div className="flex flex-col gap-4 justify-end mb-6">
             <div className="bg-gray-900 text-white p-4 rounded">
-              <div className="flex gap-8">
+              <div className="flex gap-8 flex-wrap">
                 <div>
                   <div className="text-sm text-gray-300">SUBTOTAL</div>
                   <div className="text-xl font-bold">{currency} {(companyCurrencyTotal || total).toFixed(2)}</div>
@@ -169,6 +171,21 @@ export default function ProposalPreview({
                   )}
                 </div>
               </div>
+            </div>
+            <div className="bg-white border border-gray-200 p-4 rounded">
+              <div className="text-sm text-gray-500 uppercase tracking-wide mb-2">Payment Link</div>
+              {paymentLink ? (
+                <a
+                  href={paymentLink}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-blue-600 break-words hover:underline"
+                >
+                  {paymentLink}
+                </a>
+              ) : (
+                <div className="text-sm text-gray-500">No payment link configured yet.</div>
+              )}
             </div>
           </div>
         </div>

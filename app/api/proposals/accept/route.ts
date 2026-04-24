@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
     const proposalId = url.searchParams.get("proposalId");
     const customerEmail = url.searchParams.get("email");
     const paymentLink =
+      url.searchParams.get("paymentLink") ||
       process.env.PROPOSAL_PAYMENT_LINK ||
       "https://example.com/add-payment-link-here";
 
@@ -93,7 +94,7 @@ export async function GET(request: NextRequest) {
               ${customerEmail ? `<p><strong>Email:</strong><br>${customerEmail}</p>` : ""}
             </div>
             <a href="${paymentLink}" class="button" target="_blank" rel="noopener noreferrer">Continue to Payment</a>
-            <p class="note">Set PROPOSAL_PAYMENT_LINK in your environment to replace this placeholder link.</p>
+            ${paymentLink && paymentLink !== 'https://example.com/add-payment-link-here' ? '' : '<p class="note">Set PROPOSAL_PAYMENT_LINK in your environment to replace this placeholder link.</p>'}
           </div>
         </body>
       </html>

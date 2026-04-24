@@ -56,12 +56,14 @@ function buildEmailHtml(
   company: CompanyBranding,
   selectedItems: ProposalItem[],
   subtotal: number,
-  logoSrc: string
+  logoSrc: string,
+  paymentLink?: string
 ) {
   const appUrl = process.env.APP_URL || "http://localhost:3000";
   const query = `proposalId=${encodeURIComponent(proposal.id)}&email=${encodeURIComponent(customerEmail)}`;
+  const paymentQuery = paymentLink ? `&paymentLink=${encodeURIComponent(paymentLink)}` : "";
   const pdfLink = `${appUrl}/api/proposals/generate-pdf?${query}`;
-  const acceptLink = `${appUrl}/api/proposals/accept?${query}`;
+  const acceptLink = `${appUrl}/api/proposals/accept?${query}${paymentQuery}`;
   const declineLink = `${appUrl}/api/proposals/decline?${query}`;
   const validUntilText =
     proposal.validUntil ||
@@ -138,6 +140,13 @@ function buildEmailHtml(
                 <div style="font-size: 24px; font-weight: 700;">${company.currency || "USD"} ${subtotal.toFixed(2)}</div>
               </div>
 
+              ${paymentLink ? `
+              <div style="margin-bottom: 18px; padding: 16px; background: #f1f5f9; border-radius: 10px; border: 1px solid #cbd5e1;">
+                <div style="font-size: 12px; color: #475569; margin-bottom: 8px;">Payment Link</div>
+                <a href="${paymentLink}" target="_blank" rel="noreferrer noopener" style="color: #0f172a; word-break: break-all; text-decoration: underline;">${paymentLink}</a>
+              </div>
+              ` : ''}
+
               <table style="width: 100%; margin-bottom: 8px;">
                 <tr>
                   <td style="padding: 8px; text-align: center;">
@@ -152,9 +161,7 @@ function buildEmailHtml(
                 </tr>
               </table>
 
-              <p style="margin: 8px 0 0 0; font-size: 12px; color: #64748b;">
-                Set <strong>PROPOSAL_PAYMENT_LINK</strong> in environment to define your payment destination.
-              </p>
+              ${paymentLink ? '' : `<p style="margin: 8px 0 0 0; font-size: 12px; color: #64748b;">Set <strong>PROPOSAL_PAYMENT_LINK</strong> in environment to define your payment destination.</p>`}
 
               <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #475569;">
                 <div><strong>${company.businessName}</strong></div>
@@ -177,6 +184,7 @@ export async function sendProposalEmail(
   proposal: Proposal,
   company: CompanyBranding,
   items: ProposalItem[],
+  paymentLink?: string,
   options?: { forceFromName?: string; forceReplyTo?: string }
 ) {
   const selectedItems = items.filter((item) => proposal.selectedItems.includes(item.id));
@@ -189,7 +197,8 @@ export async function sendProposalEmail(
     company,
     selectedItems,
     subtotal,
-    logoSrc
+    logoSrc,
+    paymentLink
   );
 
   const attachments: Attachment[] = [];

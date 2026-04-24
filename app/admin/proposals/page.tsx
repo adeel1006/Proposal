@@ -50,6 +50,7 @@ export default function AdminDashboard() {
     projectTitle: '',
     selectedItems: [],
     items: DEFAULT_ITEMS,
+    paymentLink: '',
     terms: DEFAULT_TERMS,
   });
 
@@ -193,6 +194,7 @@ export default function AdminDashboard() {
         projectTitle: '',
         selectedItems: [],
         items: itemsToUse,
+        paymentLink: '',
         terms: DEFAULT_TERMS,
       });
     }
@@ -336,6 +338,7 @@ export default function AdminDashboard() {
           company: selectedCompany,
           items: selectedItems,
           pdfBase64,
+          paymentLink: proposalWithId.paymentLink || '',
         }),
       });
 
@@ -609,6 +612,24 @@ export default function AdminDashboard() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Payment Link
+                    </label>
+                    <input
+                      type="url"
+                      value={proposal.paymentLink || ''}
+                      onChange={(e) =>
+                        setProposal((prev) => ({ ...prev, paymentLink: e.target.value }))
+                      }
+                      className="w-full border rounded px-3 py-2"
+                      placeholder="https://your-payment-page.com/checkout"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      This link will be included in the proposal email and shown in the preview.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Proposal Date
                     </label>
                     <input
@@ -716,6 +737,7 @@ export default function AdminDashboard() {
                   currency={selectedCompany?.currency || 'USD'}
                   usdTotal={usdTotal}
                   companyCurrencyTotal={companyCurrencyTotal}
+                  paymentLink={proposal.paymentLink}
                 />
               </div>
             </div>
@@ -972,7 +994,7 @@ export default function AdminDashboard() {
                   //     • Your company contact information
                   //   </p>
                   // </div>
-                  <div></div>
+                  <></>
                 )}
               </div>
             </div>

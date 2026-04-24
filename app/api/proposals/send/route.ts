@@ -6,12 +6,13 @@ import { getSupabaseAdminClient } from '@/lib/supabase';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { customerEmail, customerName, proposal, company, items } = body as {
+    const { customerEmail, customerName, proposal, company, items, paymentLink } = body as {
       customerEmail: string;
       customerName: string;
       proposal: Proposal;
       company: CompanyBranding;
       items: ProposalItem[];
+      paymentLink?: string;
     };
 
     if (!customerEmail || !customerName || !proposal || !company) {
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await sendProposalEmail(customerEmail, customerName, proposal, company, items);
+    await sendProposalEmail(customerEmail, customerName, proposal, company, items, paymentLink);
 
     return NextResponse.json({
       success: true,
