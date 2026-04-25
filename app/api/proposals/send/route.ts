@@ -6,13 +6,14 @@ import { getSupabaseAdminClient } from '@/lib/supabase';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { customerEmail, customerName, proposal, company, items, paymentLink } = body as {
+    const { customerEmail, customerName, proposal, company, items, paymentLink, proposalId } = body as {
       customerEmail: string;
       customerName: string;
       proposal: Proposal;
       company: CompanyBranding;
       items: ProposalItem[];
       paymentLink?: string;
+      proposalId?: string;
     };
 
     if (!customerEmail || !customerName || !proposal || !company) {
@@ -22,9 +23,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // For now, we'll generate the PDF on the client and send it as base64
-    // In a production app, you'd generate the PDF server-side
-    const pdfBase64 = body.pdfBase64;
+    let pdfBase64 = body.pdfBase64;
+
+    // If resending, fetch the PDF from the database
+    if (proposalId && !pdfBase64) {
+      const supabase = getSupabaseAdminClient();
+      const { data, error } = await supabase
+        .from('proposals')
+        .select('pdf_base64')
+        .eq('id', proposalId)
+        .single();
+
+      if (error || !data?.pdf_base64) {
+        return NextResponse.json(
+          { success: false, error: 'PDF not found for resend' },
+          { status: 404 }
+        );
+      }
+
+      pdfBase64 = data.pdf_base64;
+    }
+
     if (!pdfBase64) {
       return NextResponse.json(
         { success: false, error: 'PDF not provided' },
@@ -46,6 +65,8 @@ export async function POST(request: NextRequest) {
             status: 'submitted',
             pdf_base64: pdfBase64,
             submitted_at: new Date().toISOString(),
+            items: items, // Store items
+            company: company, // Store company
           },
           { onConflict: 'id' }
         );

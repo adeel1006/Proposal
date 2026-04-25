@@ -1,15 +1,4 @@
-import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
-import { AUTH_COOKIE_NAME, isAuthenticated } from '@/lib/auth';
-
-export default async function Home() {
-  const cookiesStore = await cookies();
-  const authCookie = cookiesStore.get(AUTH_COOKIE_NAME)?.value;
-
-  if (!isAuthenticated(authCookie)) {
-    redirect('/login');
-  }
-
+export default function Home() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <main className="mx-auto flex min-h-screen max-w-6xl flex-col justify-center px-6 py-16">

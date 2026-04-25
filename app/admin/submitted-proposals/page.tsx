@@ -66,6 +66,7 @@ export default function SubmittedProposalsPage() {
   const [error, setError] = useState('');
   const [selectedProposal, setSelectedProposal] = useState<SubmittedProposal | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadProposals = async () => {
@@ -114,6 +115,41 @@ export default function SubmittedProposalsPage() {
       setError(err instanceof Error ? err.message : 'Failed to delete proposal');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleResendProposal = async (proposal: SubmittedProposal) => {
+    const confirmed = window.confirm('Resend this proposal to the client?');
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setResendingId(proposal.id);
+
+      // Call the resend endpoint with just the proposal ID
+      // The API will fetch all data from the database
+      const response = await fetch('/api/proposals/resend', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          proposalId: proposal.id,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to resend proposal');
+      }
+
+      alert('Proposal resent successfully!');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to resend proposal');
+    } finally {
+      setResendingId(null);
     }
   };
 
@@ -192,21 +228,38 @@ export default function SubmittedProposalsPage() {
                       </td>
                       <td className="px-4 py-3">{formatDate(proposal.submitted_at)}</td>
                       <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void handleDeleteProposal(proposal.id);
-                          }}
-                          disabled={deletingId === proposal.id}
-                          className={`rounded px-3 py-1.5 text-xs font-medium !text-white ${
-                            deletingId === proposal.id
-                              ? 'cursor-not-allowed bg-red-300'
-                              : 'bg-red-600 hover:bg-red-700'
-                          }`}
-                        >
-                          {deletingId === proposal.id ? 'Deleting...' : 'Delete'}
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleResendProposal(proposal);
+                            }}
+                            disabled={resendingId === proposal.id}
+                            className={`rounded px-3 py-1.5 text-xs font-medium !text-white ${
+                              resendingId === proposal.id
+                                ? 'cursor-not-allowed bg-blue-300'
+                                : 'bg-blue-600 hover:bg-blue-700'
+                            }`}
+                          >
+                            {resendingId === proposal.id ? 'Resending...' : 'Resend'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleDeleteProposal(proposal.id);
+                            }}
+                            disabled={deletingId === proposal.id}
+                            className={`rounded px-3 py-1.5 text-xs font-medium !text-white ${
+                              deletingId === proposal.id
+                                ? 'cursor-not-allowed bg-red-300'
+                                : 'bg-red-600 hover:bg-red-700'
+                            }`}
+                          >
+                            {deletingId === proposal.id ? 'Deleting...' : 'Delete'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

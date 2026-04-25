@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import type { Attachment } from "nodemailer/lib/mailer";
 import type { Proposal, ProposalItem, CompanyBranding } from "@/app/lib/proposalTypes";
+import { currencyService } from "@/lib/currencyService";
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.gmail.com",
@@ -49,7 +50,7 @@ function resolveLogo(company: CompanyBranding) {
   };
 }
 
-function buildEmailHtml(
+async function buildEmailHtml(
   customerName: string,
   customerEmail: string,
   proposal: Proposal,
@@ -59,6 +60,7 @@ function buildEmailHtml(
   logoSrc: string,
   paymentLink?: string
 ) {
+  const subtotalUSD = await currencyService.convertToUSD(subtotal, company.currency || 'USD');
   const appUrl = process.env.APP_URL || "http://localhost:3000";
   const query = `proposalId=${encodeURIComponent(proposal.id)}&email=${encodeURIComponent(customerEmail)}`;
   const paymentQuery = paymentLink ? `&paymentLink=${encodeURIComponent(paymentLink)}` : "";
@@ -118,26 +120,29 @@ function buildEmailHtml(
                   </tr>
                 </thead>
                 <tbody>
-                  ${selectedItems
-                    .map(
-                      (item) => `
+                  ${await Promise.all(selectedItems
+                    .map(async (item) => {
+                      const itemTotal = item.price * (item.quantity || 1);
+                      const itemTotalUSD = await currencyService.convertToUSD(itemTotal, company.currency || 'USD');
+                      return `
                     <tr>
                       <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">
                         <strong>${item.name}</strong><br />
                         <span style="font-size: 12px; color: #64748b;">${item.description}</span>
                       </td>
                       <td style="padding: 10px; text-align: center; border-bottom: 1px solid #e2e8f0;">${item.quantity || 1}</td>
-                      <td style="padding: 10px; text-align: right; border-bottom: 1px solid #e2e8f0;">${company.currency || "USD"} ${(item.price * (item.quantity || 1)).toFixed(2)}</td>
+                      <td style="padding: 10px; text-align: right; border-bottom: 1px solid #e2e8f0;">${company.currency || "USD"} ${(item.price * (item.quantity || 1)).toFixed(2)}<br /><span style="font-size: 11px; color: #64748b;">USD ${itemTotalUSD.toFixed(2)}</span></td>
                     </tr>
-                  `
-                    )
-                    .join("")}
+                  `;
+                    })
+                  ).then(rows => rows.join(""))}
                 </tbody>
               </table>
 
               <div style="text-align: right; margin-bottom: 22px;">
                 <div style="font-size: 13px; color: #64748b;">Total</div>
                 <div style="font-size: 24px; font-weight: 700;">${company.currency || "USD"} ${subtotal.toFixed(2)}</div>
+                <div style="font-size: 14px; color: #64748b;">USD ${subtotalUSD.toFixed(2)}</div>
               </div>
 
               ${paymentLink ? `
@@ -190,7 +195,7 @@ export async function sendProposalEmail(
   const selectedItems = items.filter((item) => proposal.selectedItems.includes(item.id));
   const subtotal = selectedItems.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0);
   const { logoSrc, logoAttachment } = resolveLogo(company);
-  const emailBody = buildEmailHtml(
+  const emailBody = await buildEmailHtml(
     customerName,
     customerEmail,
     proposal,
