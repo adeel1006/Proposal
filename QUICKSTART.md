@@ -36,11 +36,9 @@ http://localhost:3000
 
 ### 5. Use the app
 
-- `/proposal-maker` — create and preview proposals
 - `/admin/proposals` — admin proposal editor
 - `/admin/companies` — company branding management
 - `/admin/services` — service item management
-- `/client/proposals` — client-facing proposal preview
 
 ---
 
