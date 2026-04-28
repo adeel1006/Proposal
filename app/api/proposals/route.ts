@@ -19,16 +19,42 @@ export async function GET() {
   try {
     const supabase = getSupabaseAdminClient();
 
+    // Keep list payload light: exclude heavy fields like pdf_base64.
+    const listColumns = [
+      "id",
+      "company_id",
+      "client_name",
+      "client_email",
+      "client_phone_number",
+      "project_title",
+      "project_description",
+      "selected_items",
+      "items",
+      "notes",
+      "proposal_date",
+      "total",
+      "status",
+      "submitted_at",
+      "company",
+    ].join(", ");
+
     const { data, error } = await supabase
       .from("proposals")
-      .select("*")
+      .select(listColumns)
       .order("submitted_at", { ascending: false });
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, data: data ?? [] });
+    return NextResponse.json(
+      { success: true, data: data ?? [] },
+      {
+        headers: {
+          "Cache-Control": "private, max-age=30, stale-while-revalidate=120",
+        },
+      }
+    );
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to fetch proposals";

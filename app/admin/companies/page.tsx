@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { CompanyBranding } from '@/app/lib/proposalTypes';
 import CompanyBrandingForm from '@/app/components/CompanyBrandingForm';
+import { CompanyGridSkeleton, PageHeaderSkeleton } from '@/app/components/LoadingSkeletons';
 import { useCompanies } from '@/lib/hooks/useCompanies';
 
 export default function CompaniesPage() {
@@ -66,7 +67,15 @@ export default function CompaniesPage() {
   };
 
   if (loading) {
-    return <div className="p-6 text-center">Loading companies...</div>;
+    return (
+      <div className="min-h-screen bg-gray-50 p-6">
+        <div className="mx-auto max-w-6xl">
+          <PageHeaderSkeleton />
+          <div className="mb-6 h-12 w-44 animate-pulse rounded-lg bg-slate-200" />
+          <CompanyGridSkeleton />
+        </div>
+      </div>
+    );
   }
 
   return (

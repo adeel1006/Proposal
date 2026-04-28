@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import Link from 'next/link';
+import { ProposalTableSkeleton } from '@/app/components/LoadingSkeletons';
+
+const PROPOSALS_CACHE_TTL_MS = 60 * 1000;
 
 type ProposalItem = {
   id: string;
@@ -37,6 +40,21 @@ type SubmittedProposal = {
     currency?: string;
   } | null;
 };
+
+let proposalsCache: SubmittedProposal[] | null = null;
+let proposalsCacheAt = 0;
+let proposalsInFlight: Promise<SubmittedProposal[]> | null = null;
+
+async function requestSubmittedProposals(): Promise<SubmittedProposal[]> {
+  const response = await fetch('/api/proposals');
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result?.error || 'Failed to load submitted proposals');
+  }
+
+  return Array.isArray(result.data) ? result.data : [];
+}
 
 function normalizeStatus(status: string) {
   if (status === 'approved' || status === 'accepted') return 'accepted';
@@ -101,11 +119,14 @@ export default function SubmittedProposalsPage() {
         throw new Error(result?.error || 'Failed to update status');
       }
 
-      setProposals((prev) =>
-        prev.map((proposal) =>
+      setProposals((prev) => {
+        const updated = prev.map((proposal) =>
           proposal.id === proposalId ? { ...proposal, status: newStatus } : proposal
-        )
-      );
+        );
+        proposalsCache = updated;
+        proposalsCacheAt = Date.now();
+        return updated;
+      });
 
       if (selectedProposal?.id === proposalId) {
         setSelectedProposal({ ...selectedProposal, status: newStatus });
@@ -141,20 +162,30 @@ export default function SubmittedProposalsPage() {
   useEffect(() => {
     const loadProposals = async () => {
       try {
-        setLoading(true);
         setError('');
+        const hasFreshCache =
+          proposalsCache &&
+          Date.now() - proposalsCacheAt < PROPOSALS_CACHE_TTL_MS;
 
-        const response = await fetch('/api/proposals', { cache: 'no-store' });
-        const result = await response.json();
-
-        if (!response.ok) {
-          throw new Error(result?.error || 'Failed to load submitted proposals');
+        if (hasFreshCache) {
+          setProposals(proposalsCache || []);
+          setLoading(false);
+          return;
         }
 
-        setProposals(Array.isArray(result.data) ? result.data : []);
+        setLoading(!proposalsCache);
+        if (!proposalsInFlight) {
+          proposalsInFlight = requestSubmittedProposals();
+        }
+
+        const data = await proposalsInFlight;
+        proposalsCache = data;
+        proposalsCacheAt = Date.now();
+        setProposals(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load submitted proposals');
       } finally {
+        proposalsInFlight = null;
         setLoading(false);
       }
     };
@@ -179,7 +210,12 @@ export default function SubmittedProposalsPage() {
         throw new Error(result?.error || 'Failed to delete proposal');
       }
 
-      setProposals((prev) => prev.filter((proposal) => proposal.id !== proposalId));
+      setProposals((prev) => {
+        const updated = prev.filter((proposal) => proposal.id !== proposalId);
+        proposalsCache = updated;
+        proposalsCacheAt = Date.now();
+        return updated;
+      });
       setSelectedProposal((prev) => (prev?.id === proposalId ? null : prev));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete proposal');
@@ -240,9 +276,7 @@ export default function SubmittedProposalsPage() {
         </div>
 
         {loading && (
-          <div className="rounded-lg border border-gray-200 bg-white p-6 text-gray-700">
-            Loading submitted proposals...
-          </div>
+          <ProposalTableSkeleton />
         )}
 
         {!loading && error && (

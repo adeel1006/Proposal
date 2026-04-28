@@ -6,9 +6,14 @@ type DraftProposal = Proposal & {
   updatedAt?: string;
 };
 
-export function useDraftProposals() {
+type UseDraftProposalsOptions = {
+  autoFetch?: boolean;
+};
+
+export function useDraftProposals(options: UseDraftProposalsOptions = {}) {
+  const { autoFetch = true } = options;
   const [drafts, setDrafts] = useState<DraftProposal[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Fetch all draft proposals
@@ -122,8 +127,13 @@ export function useDraftProposals() {
 
   // Load drafts on mount
   useEffect(() => {
-    fetchDrafts();
-  }, [fetchDrafts]);
+    if (autoFetch) {
+      fetchDrafts();
+      return;
+    }
+
+    setLoading(false);
+  }, [autoFetch, fetchDrafts]);
 
   return {
     drafts,

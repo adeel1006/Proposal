@@ -1,29 +1,64 @@
 import { useState, useCallback, useEffect } from 'react';
 import { CompanyBranding } from '@/app/lib/proposalTypes';
 
+const COMPANIES_CACHE_TTL_MS = 60 * 1000;
+let companiesCache: CompanyBranding[] | null = null;
+let companiesCacheAt = 0;
+let companiesInFlight: Promise<CompanyBranding[]> | null = null;
+
+async function requestCompanies(): Promise<CompanyBranding[]> {
+  const response = await fetch('/api/companies');
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || 'Failed to fetch companies');
+  }
+
+  return result.data || [];
+}
+
 export function useCompanies() {
   const [companies, setCompanies] = useState<CompanyBranding[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Fetch companies from API
-  const fetchCompanies = useCallback(async () => {
-    setLoading(true);
+  const fetchCompanies = useCallback(async (opts?: { force?: boolean; silent?: boolean }) => {
+    const force = Boolean(opts?.force);
+    const silent = Boolean(opts?.silent);
+    const hasFreshCache =
+      !force &&
+      companiesCache &&
+      Date.now() - companiesCacheAt < COMPANIES_CACHE_TTL_MS;
+
+    if (hasFreshCache) {
+      setCompanies(companiesCache || []);
+      setLoading(false);
+      return companiesCache || [];
+    }
+
+    if (!silent) {
+      setLoading(true);
+    }
     setError(null);
+
     try {
-      const response = await fetch('/api/companies');
-      const result = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to fetch companies');
+      if (!companiesInFlight) {
+        companiesInFlight = requestCompanies();
       }
-      
-      setCompanies(result.data || []);
+
+      const data = await companiesInFlight;
+      companiesCache = data;
+      companiesCacheAt = Date.now();
+      setCompanies(data);
+      return data;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       setError(message);
       console.error('Failed to fetch companies:', err);
+      throw err;
     } finally {
+      companiesInFlight = null;
       setLoading(false);
     }
   }, []);
@@ -44,7 +79,13 @@ export function useCompanies() {
         throw new Error(result.error || 'Failed to create company');
       }
       
-      setCompanies((prev) => [result.data, ...prev]);
+      setCompanies((prev) => {
+        const base = companiesCache || prev;
+        const updated = [result.data, ...base];
+        companiesCache = updated;
+        companiesCacheAt = Date.now();
+        return updated;
+      });
       return result.data;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -70,9 +111,13 @@ export function useCompanies() {
         throw new Error(result.error || 'Failed to update company');
       }
       
-      setCompanies((prev) =>
-        prev.map((c) => (c.id === company.id ? result.data : c))
-      );
+      setCompanies((prev) => {
+        const base = companiesCache || prev;
+        const updated = base.map((c) => (c.id === company.id ? result.data : c));
+        companiesCache = updated;
+        companiesCacheAt = Date.now();
+        return updated;
+      });
       return result.data;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -96,7 +141,13 @@ export function useCompanies() {
         throw new Error(result.error || 'Failed to delete company');
       }
       
-      setCompanies((prev) => prev.filter((c) => c.id !== id));
+      setCompanies((prev) => {
+        const base = companiesCache || prev;
+        const updated = base.filter((c) => c.id !== id);
+        companiesCache = updated;
+        companiesCacheAt = Date.now();
+        return updated;
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       setError(message);
@@ -107,7 +158,14 @@ export function useCompanies() {
 
   // Load companies on mount
   useEffect(() => {
-    fetchCompanies();
+    if (companiesCache) {
+      setCompanies(companiesCache);
+      setLoading(false);
+      void fetchCompanies({ silent: true });
+      return;
+    }
+
+    void fetchCompanies();
   }, [fetchCompanies]);
 
   return {

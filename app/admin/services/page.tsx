@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { ProposalItem } from '@/app/lib/proposalTypes';
+import { PageHeaderSkeleton, SelectSkeleton, ServiceListSkeleton } from '@/app/components/LoadingSkeletons';
 import { useCompanies } from '@/lib/hooks/useCompanies';
 import { useServices } from '@/lib/hooks/useServices';
 
@@ -80,7 +81,23 @@ export default function ServicesPage() {
   };
 
   if (companiesLoading) {
-    return <div className="p-6 text-center">Loading companies...</div>;
+    return (
+      <div className="min-h-screen bg-gray-50 p-6">
+        <div className="mx-auto max-w-7xl">
+          <PageHeaderSkeleton />
+          <div className="mb-6 rounded-lg bg-white p-6 shadow">
+            <SelectSkeleton />
+          </div>
+          <div className="rounded-lg bg-white p-6 shadow">
+            <div className="mb-6 flex items-center justify-between">
+              <div className="h-8 w-56 animate-pulse rounded bg-slate-200" />
+              <div className="h-10 w-32 animate-pulse rounded bg-slate-200" />
+            </div>
+            <ServiceListSkeleton />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -306,14 +323,10 @@ export default function ServicesPage() {
             )}
 
             {/* Loading State */}
-            {servicesLoading && (
-              <div className="text-center py-12 bg-gray-50 rounded">
-                <p className="text-gray-500">Loading services...</p>
-              </div>
-            )}
+            {servicesLoading && <ServiceListSkeleton />}
 
             {/* Services List */}
-            {!servicesLoading && companyServices.length === 0 ? (
+            {!servicesLoading && companyServices.length === 0 && (
               <div className="text-center py-12 bg-gray-50 rounded border-2 border-dashed">
                 <p className="text-gray-500 text-lg">No services added yet</p>
                 <button
@@ -323,7 +336,9 @@ export default function ServicesPage() {
                   Add First Service
                 </button>
               </div>
-            ) : (
+            )}
+
+            {!servicesLoading && companyServices.length > 0 && (
               <div className="space-y-3">
                 {companyServices.map((service) => (
                   <div

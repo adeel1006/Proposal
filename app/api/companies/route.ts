@@ -29,10 +29,31 @@ type CompanyRow = {
 export async function GET() {
   try {
     const supabase = getSupabaseAdminClient();
+    const listColumns = [
+      "id",
+      "business_name",
+      "email",
+      "mobile_number",
+      "whatsapp",
+      "address",
+      "currency",
+      "logo",
+      "website",
+      "registration_number",
+      "instagram",
+      "linkedin",
+      "twitter",
+      "facebook",
+      "youtube",
+      "pinterest",
+      "reply_to_email",
+      "created_at",
+      "updated_at",
+    ].join(", ");
 
     const { data, error } = await supabase
       .from("companies")
-      .select("*")
+      .select(listColumns)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -40,7 +61,8 @@ export async function GET() {
     }
 
     // Transform from snake_case to camelCase for frontend
-    const transformed = ((data || []) as CompanyRow[]).map((company) => ({
+    const rows = (data ?? []) as unknown as CompanyRow[];
+    const transformed = rows.map((company) => ({
       id: company.id,
       businessName: company.business_name,
       email: company.email,
@@ -53,7 +75,14 @@ export async function GET() {
       updatedAt: company.updated_at,
     }));
 
-    return NextResponse.json({ success: true, data: transformed });
+    return NextResponse.json(
+      { success: true, data: transformed },
+      {
+        headers: {
+          "Cache-Control": "private, max-age=30, stale-while-revalidate=120",
+        },
+      }
+    );
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to fetch companies";

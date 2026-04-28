@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import ItemEditor from '@/app/components/ItemEditor';
+import { ProposalEditorSkeleton, SelectSkeleton, ServiceListSkeleton } from '@/app/components/LoadingSkeletons';
 import ProposalPreview from '@/app/components/ProposalPreview';
 import { generateProposalHTML } from '@/lib/clientPdfService';
 import {
@@ -40,8 +41,8 @@ function ensureProposalId(proposal: Proposal): Proposal {
 export default function AdminDashboard() {
   const { companies, loading: companiesLoading } = useCompanies();
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
-  const { services: companyServices } = useServices(selectedCompanyId);
-  const { saveDraft } = useDraftProposals();
+  const { services: companyServices, loading: servicesLoading } = useServices(selectedCompanyId);
+  const { saveDraft } = useDraftProposals({ autoFetch: false });
 
   const [proposal, setProposal] = useState<Proposal>({
     id: '',
@@ -404,7 +405,7 @@ export default function AdminDashboard() {
   const total = getSelectedItemsTotal(proposal.selectedItems, proposal.items);
 
   if (!isHydrated) {
-    return null;
+    return <ProposalEditorSkeleton />;
   }
 
   return (
@@ -487,9 +488,7 @@ export default function AdminDashboard() {
                       Select Company *
                     </label>
                     {companiesLoading ? (
-                      <div className="p-3 bg-blue-50 border border-blue-300 rounded text-sm text-blue-800">
-                        Loading companies...
-                      </div>
+                      <SelectSkeleton />
                     ) : companies.length === 0 ? (
                       <div className="p-3 bg-yellow-50 border border-yellow-300 rounded text-sm text-yellow-800">
                         <p>No companies found. </p>
@@ -698,22 +697,26 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {proposal.items.map((item) => (
-                    <label key={item.id} className="flex items-start gap-3 cursor-pointer p-2 rounded hover:bg-gray-50">
-                      <input
-                        type="checkbox"
-                        checked={proposal.selectedItems.includes(item.id)}
-                        onChange={() => handleToggleItem(item.id)}
-                        className="w-4 h-4 mt-1"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">{item.name}</div>
-                        <div className="text-xs text-gray-600">
-                          {item.currency || 'USD'} {item.price.toFixed(2)} × {item.quantity || 1}
+                  {servicesLoading ? (
+                    <ServiceListSkeleton count={3} />
+                  ) : (
+                    proposal.items.map((item) => (
+                      <label key={item.id} className="flex items-start gap-3 cursor-pointer p-2 rounded hover:bg-gray-50">
+                        <input
+                          type="checkbox"
+                          checked={proposal.selectedItems.includes(item.id)}
+                          onChange={() => handleToggleItem(item.id)}
+                          className="w-4 h-4 mt-1"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm truncate">{item.name}</div>
+                          <div className="text-xs text-gray-600">
+                            {item.currency || 'USD'} {item.price.toFixed(2)} × {item.quantity || 1}
+                          </div>
                         </div>
-                      </div>
-                    </label>
-                  ))}
+                      </label>
+                    ))
+                  )}
                 </div>
 
                 <div className="mt-6 p-3 bg-blue-50 rounded border border-blue-200">
@@ -728,15 +731,19 @@ export default function AdminDashboard() {
 
             {/* Right: Item Editor */}
             <div className="lg:col-span-2 space-y-4">
-              {proposal.items.map((item) => (
-                <ItemEditor
-                  key={item.id}
-                  item={item}
-                  onSave={handleSaveItem}
-                  onDelete={handleDeleteItem}
-                  isNew={false}
-                />
-              ))}
+              {servicesLoading ? (
+                <ServiceListSkeleton count={3} />
+              ) : (
+                proposal.items.map((item) => (
+                  <ItemEditor
+                    key={item.id}
+                    item={item}
+                    onSave={handleSaveItem}
+                    onDelete={handleDeleteItem}
+                    isNew={false}
+                  />
+                ))
+              )}
             </div>
           </div>
         )}
