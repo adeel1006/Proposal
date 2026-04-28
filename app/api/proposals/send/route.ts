@@ -3,9 +3,29 @@ import { sendProposalEmail } from '@/lib/emailService';
 import { Proposal, ProposalItem, CompanyBranding } from '@/app/lib/proposalTypes';
 import { getSupabaseAdminClient } from '@/lib/supabase';
 
+function isLocalOrigin(value: string) {
+  return value.includes('localhost') || value.includes('127.0.0.1');
+}
+
+function resolveAppUrl(request: NextRequest) {
+  const envAppUrl = process.env.APP_URL?.trim();
+  const requestOrigin = request.nextUrl.origin;
+
+  if (envAppUrl && !isLocalOrigin(envAppUrl)) {
+    return envAppUrl.replace(/\/$/, '');
+  }
+
+  if (requestOrigin && !isLocalOrigin(requestOrigin)) {
+    return requestOrigin.replace(/\/$/, '');
+  }
+
+  return envAppUrl?.replace(/\/$/, '') || requestOrigin.replace(/\/$/, '');
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    const appUrl = resolveAppUrl(request);
     const { customerEmail, customerName, proposal, company, items, paymentLink, proposalId } = body as {
       customerEmail: string;
       customerName: string;
@@ -93,7 +113,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await sendProposalEmail(customerEmail, customerName, proposal, company, items, paymentLink);
+    await sendProposalEmail(customerEmail, customerName, proposal, company, items, paymentLink, {
+      appUrl,
+    });
 
     return NextResponse.json({
       success: true,

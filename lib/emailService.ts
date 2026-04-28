@@ -58,15 +58,15 @@ async function buildEmailHtml(
   selectedItems: ProposalItem[],
   subtotal: number,
   logoSrc: string,
-  paymentLink?: string
+  paymentLink?: string,
+  appUrl?: string
 ) {
   const subtotalUSD = await currencyService.convertToUSD(subtotal, company.currency || 'USD');
-  const appUrl = process.env.APP_URL || "http://localhost:3000";
   const query = `proposalId=${encodeURIComponent(proposal.id)}&email=${encodeURIComponent(customerEmail)}`;
   const paymentQuery = paymentLink ? `&paymentLink=${encodeURIComponent(paymentLink)}` : "";
-  const pdfLink = `${appUrl}/api/proposals/generate-pdf?${query}`;
-  const acceptLink = `${appUrl}/api/proposals/accept?${query}${paymentQuery}`;
-  const declineLink = `${appUrl}/api/proposals/decline?${query}`;
+  const resolvedAppUrl = appUrl || process.env.APP_URL || "http://localhost:3000";
+  const acceptLink = `${resolvedAppUrl}/api/proposals/accept?${query}${paymentQuery}`;
+  const declineLink = `${resolvedAppUrl}/api/proposals/decline?${query}`;
   const validUntilText =
     proposal.validUntil ||
     new Date(new Date().setDate(new Date().getDate() + 30)).toLocaleDateString();
@@ -159,7 +159,7 @@ async function buildEmailHtml(
             <td class="email-body" style="padding: 28px;">
               <p style="margin: 0 0 14px 0;">Hello ${customerName},</p>
               <p style="margin: 0 0 20px 0; color: #334155;">
-                Please review your proposal for <strong>${proposal.projectTitle}</strong>. You can download the PDF, accept and continue to payment, or decline.
+                Please review your proposal for <strong>${proposal.projectTitle}</strong>. You can accept and continue to payment, or decline.
               </p>
 
               <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; margin-bottom: 20px;">
@@ -223,9 +223,6 @@ async function buildEmailHtml(
               <table style="width: 100%; margin-bottom: 8px;">
                 <tr>
                   <td class="action-cell" style="padding: 8px; text-align: center;">
-                    <a href="${pdfLink}" class="action-button" style="display: inline-block; padding: 10px 16px; background: #475569; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600;">Download PDF</a>
-                  </td>
-                  <td class="action-cell" style="padding: 8px; text-align: center;">
                     <a href="${acceptLink}" class="action-button" style="display: inline-block; padding: 10px 16px; background: #059669; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600;">Accept and Pay</a>
                   </td>
                   <td class="action-cell" style="padding: 8px; text-align: center;">
@@ -258,7 +255,7 @@ export async function sendProposalEmail(
   company: CompanyBranding,
   items: ProposalItem[],
   paymentLink?: string,
-  options?: { forceFromName?: string; forceReplyTo?: string }
+  options?: { forceFromName?: string; forceReplyTo?: string; appUrl?: string }
 ) {
   const selectedItems = items.filter((item) => proposal.selectedItems.includes(item.id));
   const subtotal = selectedItems.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0);
@@ -271,7 +268,8 @@ export async function sendProposalEmail(
     selectedItems,
     subtotal,
     logoSrc,
-    paymentLink
+    paymentLink,
+    options?.appUrl
   );
 
   const attachments: Attachment[] = [];

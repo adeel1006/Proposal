@@ -3,9 +3,13 @@ import { AUTH_COOKIE_NAME, AUTH_COOKIE_VALUE } from '@/lib/auth';
 
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+  const isPublicProposalActionRoute =
+    pathname.startsWith('/api/proposals/accept') ||
+    pathname.startsWith('/api/proposals/decline') ||
+    pathname.startsWith('/api/proposals/generate-pdf');
   
   // Skip middleware for public routes
-  if (pathname === '/login' || pathname.startsWith('/api/auth')) {
+  if (pathname === '/login' || pathname.startsWith('/api/auth') || isPublicProposalActionRoute) {
     return NextResponse.next();
   }
 
