@@ -23,6 +23,28 @@ if (process.env.NODE_ENV === "development" && process.env.SMTP_USER && process.e
   });
 }
 
+function escapeHtml(value: string | undefined | null) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderAdditionalNotes(notes?: string) {
+  if (!notes?.trim()) {
+    return "";
+  }
+
+  return `
+    <div style="margin-bottom: 22px; padding: 16px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px;">
+      <div style="font-size: 12px; font-weight: 700; color: #9a3412; text-transform: uppercase; margin-bottom: 8px;">Additional Notes</div>
+      <div style="font-size: 14px; line-height: 1.6; color: #431407;">${escapeHtml(notes.trim()).replace(/\r?\n/g, "<br />")}</div>
+    </div>
+  `;
+}
+
 function resolveLogo(company: CompanyBranding) {
   if (!company.logo) {
     return { logoSrc: "", logoAttachment: null as Attachment | null };
@@ -67,10 +89,6 @@ async function buildEmailHtml(
   const resolvedAppUrl = appUrl || process.env.APP_URL || "http://localhost:3000";
   const acceptLink = `${resolvedAppUrl}/api/proposals/accept?${query}${paymentQuery}`;
   const declineLink = `${resolvedAppUrl}/api/proposals/decline?${query}`;
-  const validUntilText =
-    proposal.validUntil ||
-    new Date(new Date().setDate(new Date().getDate() + 30)).toLocaleDateString();
-
   return `
     <html>
       <head>
@@ -172,12 +190,10 @@ async function buildEmailHtml(
                     <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">Client</div>
                     <div style="font-size: 14px; font-weight: 600;">${proposal.clientName}</div>
                   </td>
-                  <td class="summary-cell" style="padding: 14px 16px; width: 33.33%; vertical-align: top;">
-                    <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">Valid Until</div>
-                    <div style="font-size: 14px; font-weight: 600;">${validUntilText}</div>
-                  </td>
                 </tr>
               </table>
+
+              ${renderAdditionalNotes(proposal.notes)}
 
               <table class="services-table" style="width: 100%; border-collapse: collapse; margin-bottom: 18px;">
                 <thead>

@@ -29,6 +29,7 @@ type SubmittedProposal = {
   proposal_date?: string | null;
   response_at?: string | null;
   notes?: string | null;
+  payment_link?: string | null;
   selected_items?: string[];
   items?: ProposalItem[];
   company?: {
@@ -230,11 +231,24 @@ export default function SubmittedProposalsPage() {
       return;
     }
 
+    const paymentLink = window.prompt(
+      'Payment URL for this proposal:',
+      proposal.payment_link || ''
+    );
+
+    if (paymentLink === null) {
+      return;
+    }
+
+    const trimmedPaymentLink = paymentLink.trim();
+    if (!trimmedPaymentLink) {
+      setError('Payment URL is required before resending the proposal.');
+      return;
+    }
+
     try {
       setResendingId(proposal.id);
 
-      // Call the resend endpoint with just the proposal ID
-      // The API will fetch all data from the database
       const response = await fetch('/api/proposals/resend', {
         method: 'POST',
         headers: {
@@ -242,6 +256,7 @@ export default function SubmittedProposalsPage() {
         },
         body: JSON.stringify({
           proposalId: proposal.id,
+          paymentLink: trimmedPaymentLink,
         }),
       });
 
@@ -251,6 +266,17 @@ export default function SubmittedProposalsPage() {
         throw new Error(result?.error || 'Failed to resend proposal');
       }
 
+      setProposals((prev) => {
+        const updated = prev.map((item) =>
+          item.id === proposal.id ? { ...item, payment_link: trimmedPaymentLink } : item
+        );
+        proposalsCache = updated;
+        proposalsCacheAt = Date.now();
+        return updated;
+      });
+      setSelectedProposal((prev) =>
+        prev?.id === proposal.id ? { ...prev, payment_link: trimmedPaymentLink } : prev
+      );
       alert('Proposal resent successfully!');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to resend proposal');

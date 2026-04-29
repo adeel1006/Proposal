@@ -36,9 +36,10 @@ export async function GET() {
       "status",
       "submitted_at",
       "company",
-    ].join(", ");
+    ];
 
-    const listColumnsWithResponseAt = `${baseListColumns}, response_at`;
+    const columnsWithPaymentLink = [...baseListColumns, "payment_link"];
+    const listColumnsWithResponseAt = [...columnsWithPaymentLink, "response_at"].join(", ");
 
     let queryResult = await supabase
       .from("proposals")
@@ -48,7 +49,14 @@ export async function GET() {
     if (queryResult.error?.message?.includes("response_at")) {
       queryResult = await supabase
         .from("proposals")
-        .select(baseListColumns)
+        .select(columnsWithPaymentLink.join(", "))
+        .order("submitted_at", { ascending: false });
+    }
+
+    if (queryResult.error?.message?.includes("payment_link")) {
+      queryResult = await supabase
+        .from("proposals")
+        .select(baseListColumns.join(", "))
         .order("submitted_at", { ascending: false });
     }
 
@@ -91,7 +99,7 @@ export async function POST(request: NextRequest) {
         ? total
         : computeProposalTotal(proposal);
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       id: proposal.id,
       company_id: proposal.companyId || null,
       client_name: proposal.clientName,
@@ -102,6 +110,7 @@ export async function POST(request: NextRequest) {
       selected_items: proposal.selectedItems,
       items: proposal.items,
       notes: proposal.notes || null,
+      payment_link: proposal.paymentLink || null,
       valid_until: proposal.validUntil || null,
       proposal_date: proposal.proposalDate || null,
       terms: proposal.terms || {},
@@ -111,11 +120,22 @@ export async function POST(request: NextRequest) {
       submitted_at: new Date().toISOString(),
     };
 
-    const { data, error } = await supabase
+    let queryResult = await supabase
       .from("proposals")
       .upsert(payload, { onConflict: "id" })
       .select()
       .single();
+
+    if (queryResult.error?.message?.includes("payment_link")) {
+      delete payload.payment_link;
+      queryResult = await supabase
+        .from("proposals")
+        .upsert(payload, { onConflict: "id" })
+        .select()
+        .single();
+    }
+
+    const { data, error } = queryResult;
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

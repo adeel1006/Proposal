@@ -6,8 +6,9 @@ import type { Proposal, ProposalItem, CompanyBranding } from '@/app/lib/proposal
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { proposalId } = body as {
+    const { proposalId, paymentLink } = body as {
       proposalId: string;
+      paymentLink?: string;
     };
 
     if (!proposalId) {
@@ -44,18 +45,45 @@ export async function POST(request: NextRequest) {
       selectedItems: proposalData.selected_items || [],
       companyId: proposalData.company_id || '',
       notes: proposalData.notes || '',
+      paymentLink: proposalData.payment_link || '',
       validUntil: proposalData.valid_until || '',
       terms: proposalData.terms || {},
     };
 
     const company: CompanyBranding = proposalData.company || {};
     const items: ProposalItem[] = proposalData.items || [];
+    const resolvedPaymentLink =
+      paymentLink?.trim() ||
+      proposalData.payment_link ||
+      proposal.paymentLink ||
+      '';
 
     if (!proposalData.client_email || !proposalData.client_name) {
       return NextResponse.json(
         { success: false, error: 'Missing client email or name in proposal' },
         { status: 400 }
       );
+    }
+
+    if (!resolvedPaymentLink) {
+      return NextResponse.json(
+        { success: false, error: 'Payment URL is required to resend this proposal' },
+        { status: 400 }
+      );
+    }
+
+    if (resolvedPaymentLink !== proposalData.payment_link) {
+      const { error: updatePaymentLinkError } = await supabase
+        .from('proposals')
+        .update({ payment_link: resolvedPaymentLink })
+        .eq('id', proposalId);
+
+      if (updatePaymentLinkError) {
+        return NextResponse.json(
+          { success: false, error: updatePaymentLinkError.message },
+          { status: 500 }
+        );
+      }
     }
 
     // Check if SMTP is configured
@@ -83,12 +111,14 @@ export async function POST(request: NextRequest) {
       proposalData.client_name,
       proposal,
       company,
-      items
+      items,
+      resolvedPaymentLink
     );
 
     return NextResponse.json({
       success: true,
       message: `Proposal resent to ${proposalData.client_email}`,
+      paymentLink: resolvedPaymentLink,
     });
   } catch (error) {
     console.error('Error resending proposal:', error);

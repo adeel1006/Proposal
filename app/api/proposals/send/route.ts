@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
       paymentLink?: string;
       proposalId?: string;
     };
+    const resolvedPaymentLink = paymentLink?.trim() || proposal.paymentLink || '';
 
     if (!customerEmail || !customerName || !proposal || !company) {
       return NextResponse.json(
@@ -82,6 +83,7 @@ export async function POST(request: NextRequest) {
             client_name: proposal.clientName,
             client_email: proposal.clientEmail || customerEmail,
             project_title: proposal.projectTitle,
+            payment_link: resolvedPaymentLink || null,
             status: 'submitted',
             pdf_base64: pdfBase64,
             submitted_at: new Date().toISOString(),
@@ -113,7 +115,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await sendProposalEmail(customerEmail, customerName, proposal, company, items, paymentLink, {
+    await sendProposalEmail(customerEmail, customerName, proposal, company, items, resolvedPaymentLink || undefined, {
       appUrl,
     });
 
