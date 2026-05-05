@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { AUTH_COOKIE_NAME, isAuthenticated } from "@/lib/auth";
+import HeaderNav from "@/app/components/HeaderNav";
 import "./globals.css";
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
   title: "Proposal Maker",
   description: "Create and manage professional proposals with admin and client dashboards.",
   icons: {
-    icon: "/Favicon-proposals.svg",
+    icon: "/Favicon-proposals.png",
   },
 };
 
@@ -36,39 +37,13 @@ export default async function RootLayout({
         <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm">
           <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
             <div className="flex items-center gap-4">
-              <img src="/atozadvert proposals-logo.png" alt="AtoZ Advert Proposals" className="h-15 w-auto" />
+              <img src="/a2zadvert__logo.png" alt="AtoZ Advert Proposals" className="h-20 w-auto" />
               {/* <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-indigo-600">AtoZ Advert</p>
                 <p className="text-xl font-semibold text-slate-900">Proposals</p>
               </div> */}
             </div>
-            <nav className="flex flex-wrap items-center gap-4 text-sm text-slate-700">
-              {isLoggedIn ? (
-                <>
-                  <Link href="/" className="transition hover:text-slate-900">
-                    Home
-                  </Link>
-                  <Link href="/admin/proposals" className="transition hover:text-slate-900">
-                    Send Proposal
-                  </Link>
-                  <Link href="/admin/submitted-proposals" className="transition hover:text-slate-900">
-                    Submitted Proposals
-                  </Link>
-                  <form action="/api/auth/logout" method="post" className="inline">
-                    <button
-                      type="submit"
-                      className="text-sm text-slate-700 transition hover:text-slate-900"
-                    >
-                      Logout
-                    </button>
-                  </form>
-                </>
-              ) : (
-                <Link href="/login" className="transition hover:text-slate-900">
-                  Login
-                </Link>
-              )}
-            </nav>
+            <HeaderNav isLoggedIn={isLoggedIn} />
           </div>
         </header>
 

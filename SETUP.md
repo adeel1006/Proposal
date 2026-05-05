@@ -37,10 +37,11 @@ SMTP_USER="your-email@gmail.com"
 SMTP_PASSWORD="your-app-password"
 SMTP_FROM_EMAIL="your-email@gmail.com"
 APP_URL="http://localhost:3000"
-PROPOSAL_PAYMENT_LINK="https://example.com/add-payment-link-here"
+PROPOSAL_PAYMENT_LINK="https://www.paypal.com/paypalme/atozadvert"
 ```
 
 Email is optional for development, but required for real proposal delivery.
+If `PROPOSAL_PAYMENT_LINK` is omitted, the app falls back to `https://www.paypal.com/paypalme/atozadvert`.
 
 ## Password hash generation
 

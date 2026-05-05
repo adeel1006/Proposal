@@ -3,6 +3,8 @@ import type { Attachment } from "nodemailer/lib/mailer";
 import type { Proposal, ProposalItem, CompanyBranding } from "@/app/lib/proposalTypes";
 import { currencyService } from "@/lib/currencyService";
 
+const DEFAULT_PAYMENT_LINK = "https://www.paypal.com/paypalme/atozadvert";
+
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.gmail.com",
   port: parseInt(process.env.SMTP_PORT || "587", 10),
@@ -83,9 +85,10 @@ async function buildEmailHtml(
   paymentLink?: string,
   appUrl?: string
 ) {
+  const resolvedPaymentLink = paymentLink?.trim() || DEFAULT_PAYMENT_LINK;
   const subtotalUSD = await currencyService.convertToUSD(subtotal, company.currency || 'USD');
   const query = `proposalId=${encodeURIComponent(proposal.id)}&email=${encodeURIComponent(customerEmail)}`;
-  const paymentQuery = paymentLink ? `&paymentLink=${encodeURIComponent(paymentLink)}` : "";
+  const paymentQuery = `&paymentLink=${encodeURIComponent(resolvedPaymentLink)}`;
   const resolvedAppUrl = appUrl || process.env.APP_URL || "http://localhost:3000";
   const acceptLink = `${resolvedAppUrl}/api/proposals/accept?${query}${paymentQuery}`;
   const declineLink = `${resolvedAppUrl}/api/proposals/decline?${query}`;
@@ -177,7 +180,7 @@ async function buildEmailHtml(
             <td class="email-body" style="padding: 28px;">
               <p style="margin: 0 0 14px 0;">Hello ${customerName},</p>
               <p style="margin: 0 0 20px 0; color: #334155;">
-                Please review your proposal for <strong>${proposal.projectTitle}</strong>. You can accept and continue to payment, or decline.
+                Please review your proposal for <strong>${proposal.projectTitle}</strong>. You can accept and continue to payment, or decline. Details of the proposal are included below. If you have any questions, feel free to reply to this email.
               </p>
 
               <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; margin-bottom: 20px;">
@@ -229,25 +232,23 @@ async function buildEmailHtml(
                 <div style="font-size: 14px; color: #64748b;">USD ${subtotalUSD.toFixed(2)}</div>
               </div>
 
-              ${paymentLink ? `
+              ${resolvedPaymentLink ? `
               <div style="margin-bottom: 18px; padding: 16px; background: #f1f5f9; border-radius: 10px; border: 1px solid #cbd5e1;">
                 <div style="font-size: 12px; color: #475569; margin-bottom: 8px;">Payment Link</div>
-                <a href="${paymentLink}" target="_blank" rel="noreferrer noopener" style="color: #0f172a; word-break: break-all; text-decoration: underline;">${paymentLink}</a>
+                <a href="${resolvedPaymentLink}" target="_blank" rel="noreferrer noopener" style="color: #0f172a; word-break: break-all; text-decoration: underline;">${resolvedPaymentLink}</a>
               </div>
               ` : ''}
 
               <table style="width: 100%; margin-bottom: 8px;">
                 <tr>
-                  <td class="action-cell" style="padding: 8px; text-align: center;">
+                  <td class="action-cell" style="padding: 8px 4px 8px 0; text-align: left;">
                     <a href="${acceptLink}" class="action-button" style="display: inline-block; padding: 10px 16px; background: #059669; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600;">Accept and Pay</a>
                   </td>
-                  <td class="action-cell" style="padding: 8px; text-align: center;">
+                  <td class="action-cell" style="padding: 8px 0 8px 4px; text-align: left;">
                     <a href="${declineLink}" class="action-button" style="display: inline-block; padding: 10px 16px; background: #dc2626; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600;">Decline</a>
                   </td>
                 </tr>
               </table>
-
-              ${paymentLink ? '' : `<p style="margin: 8px 0 0 0; font-size: 12px; color: #64748b;">Set <strong>PROPOSAL_PAYMENT_LINK</strong> in environment to define your payment destination.</p>`}
 
               <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #475569;">
                 <div><strong>${company.businessName}</strong></div>

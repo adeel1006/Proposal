@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 
+const DEFAULT_PAYMENT_LINK = "https://www.paypal.com/paypalme/atozadvert";
+
 export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
@@ -9,7 +11,7 @@ export async function GET(request: NextRequest) {
     const paymentLink =
       url.searchParams.get("paymentLink") ||
       process.env.PROPOSAL_PAYMENT_LINK ||
-      "https://example.com/add-payment-link-here";
+      DEFAULT_PAYMENT_LINK;
 
     if (!proposalId) {
       return NextResponse.json({ error: "Missing proposal ID" }, { status: 400 });
@@ -94,7 +96,6 @@ export async function GET(request: NextRequest) {
               ${customerEmail ? `<p><strong>Email:</strong><br>${customerEmail}</p>` : ""}
             </div>
             <a href="${paymentLink}" class="button" target="_blank" rel="noopener noreferrer">Continue to Payment</a>
-            ${paymentLink && paymentLink !== 'https://gmail.com/' ? '' : '<p class="note"></p>'}
           </div>
         </body>
       </html>
