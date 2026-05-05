@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ProposalItem } from "@/app/lib/proposalTypes";
+import {
+  ProposalItem,
+  normalizeProposalAttachments,
+  type ProposalAttachment,
+} from "@/app/lib/proposalTypes";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 
 type SaveDraftPayload = {
@@ -12,6 +16,7 @@ type SaveDraftPayload = {
   projectDescription?: string;
   selectedItems: string[];
   items: ProposalItem[];
+  attachments?: ProposalAttachment[];
   notes?: string;
   validUntil?: string;
   terms?: Record<string, unknown>;
@@ -30,6 +35,7 @@ type DraftProposalRow = {
   project_description: string | null;
   selected_items: string[] | null;
   items: ProposalItem[] | null;
+  attachments: ProposalAttachment[] | null;
   notes: string | null;
   valid_until: string | null;
   terms: Record<string, unknown> | null;
@@ -69,6 +75,7 @@ export async function GET(request: NextRequest) {
       projectDescription: proposal.project_description,
       selectedItems: proposal.selected_items || [],
       items: proposal.items || [],
+      attachments: normalizeProposalAttachments(proposal.attachments),
       notes: proposal.notes,
       validUntil: proposal.valid_until,
       terms: proposal.terms || {},
@@ -101,6 +108,7 @@ export async function POST(request: NextRequest) {
       projectDescription,
       selectedItems,
       items,
+      attachments,
       notes,
       validUntil,
       terms,
@@ -139,6 +147,7 @@ export async function POST(request: NextRequest) {
           project_description: projectDescription || null,
           selected_items: selectedItems,
           items,
+          attachments: normalizeProposalAttachments(attachments),
           notes: notes || null,
           valid_until: validUntil || null,
           terms: terms || {},
@@ -163,6 +172,7 @@ export async function POST(request: NextRequest) {
           project_description: projectDescription || null,
           selected_items: selectedItems,
           items,
+          attachments: normalizeProposalAttachments(attachments),
           notes: notes || null,
           valid_until: validUntil || null,
           terms: terms || {},
@@ -190,6 +200,7 @@ export async function POST(request: NextRequest) {
       projectDescription: data.project_description,
       selectedItems: data.selected_items || [],
       items: data.items || [],
+      attachments: normalizeProposalAttachments(data.attachments),
       notes: data.notes,
       validUntil: data.valid_until,
       terms: data.terms || {},

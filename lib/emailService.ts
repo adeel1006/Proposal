@@ -1,6 +1,11 @@
 import nodemailer from "nodemailer";
 import type { Attachment } from "nodemailer/lib/mailer";
-import type { Proposal, ProposalItem, CompanyBranding } from "@/app/lib/proposalTypes";
+import {
+  getCompleteProposalAttachments,
+  type Proposal,
+  type ProposalItem,
+  type CompanyBranding,
+} from "@/app/lib/proposalTypes";
 import { currencyService } from "@/lib/currencyService";
 
 const DEFAULT_PAYMENT_LINK = "https://www.paypal.com/paypalme/atozadvert";
@@ -43,6 +48,29 @@ function renderAdditionalNotes(notes?: string) {
     <div style="margin-bottom: 22px; padding: 16px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px;">
       <div style="font-size: 12px; font-weight: 700; color: #9a3412; text-transform: uppercase; margin-bottom: 8px;">Additional Notes</div>
       <div style="font-size: 14px; line-height: 1.6; color: #431407;">${escapeHtml(notes.trim()).replace(/\r?\n/g, "<br />")}</div>
+    </div>
+  `;
+}
+
+function renderAttachmentsSection(proposal: Proposal) {
+  const attachments = getCompleteProposalAttachments(proposal.attachments);
+  if (!attachments.length) {
+    return "";
+  }
+
+  return `
+    <div style="margin-bottom: 22px;">
+      <div style="font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 10px;">Attachments</div>
+      ${attachments
+        .map(
+          (attachment) => `
+            <div style="margin-bottom: 10px; padding: 14px 16px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px;">
+              <div style="font-size: 14px; font-weight: 600; color: #0f172a; margin-bottom: 6px;">${escapeHtml(attachment.label)}</div>
+              <a href="${attachment.url}" target="_blank" rel="noreferrer noopener" style="color: #2563eb; text-decoration: underline; word-break: break-all;">${escapeHtml(attachment.url)}</a>
+            </div>
+          `
+        )
+        .join("")}
     </div>
   `;
 }
@@ -226,11 +254,28 @@ async function buildEmailHtml(
                 </tbody>
               </table>
 
+              ${renderAttachmentsSection(proposal)}
+
               <div class="mobile-total" style="text-align: right; margin-bottom: 22px;">
                 <div style="font-size: 13px; color: #64748b;">Total</div>
                 <div style="font-size: 24px; font-weight: 700;">${company.currency || "USD"} ${subtotal.toFixed(2)}</div>
                 <div style="font-size: 14px; color: #64748b;">USD ${subtotalUSD.toFixed(2)}</div>
               </div>
+
+              
+
+              <table style="width: 100%; margin-bottom: 8px;">
+                <tr>
+                  <td class="action-cell" style="padding: 8px 0; text-align: left;">
+                    <a href="${acceptLink}" class="action-button" style="display: inline-block; padding: 10px 16px; background: #059669; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600;">Accept and Pay</a>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="action-cell" style="padding: 0 0 8px 0; text-align: left;">
+                    <a href="${declineLink}" class="action-button" style="display: inline-block; padding: 10px 16px; background: #dc2626; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600;">Decline</a>
+                  </td>
+                </tr>
+              </table>
 
               ${resolvedPaymentLink ? `
               <div style="margin-bottom: 18px; padding: 16px; background: #f1f5f9; border-radius: 10px; border: 1px solid #cbd5e1;">
@@ -238,17 +283,6 @@ async function buildEmailHtml(
                 <a href="${resolvedPaymentLink}" target="_blank" rel="noreferrer noopener" style="color: #0f172a; word-break: break-all; text-decoration: underline;">${resolvedPaymentLink}</a>
               </div>
               ` : ''}
-
-              <table style="width: 100%; margin-bottom: 8px;">
-                <tr>
-                  <td class="action-cell" style="padding: 8px 4px 8px 0; text-align: left;">
-                    <a href="${acceptLink}" class="action-button" style="display: inline-block; padding: 10px 16px; background: #059669; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600;">Accept and Pay</a>
-                  </td>
-                  <td class="action-cell" style="padding: 8px 0 8px 4px; text-align: left;">
-                    <a href="${declineLink}" class="action-button" style="display: inline-block; padding: 10px 16px; background: #dc2626; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600;">Decline</a>
-                  </td>
-                </tr>
-              </table>
 
               <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #475569;">
                 <div><strong>${company.businessName}</strong></div>

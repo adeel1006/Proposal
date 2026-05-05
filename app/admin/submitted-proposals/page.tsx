@@ -16,6 +16,12 @@ type ProposalItem = {
   currency?: string;
 };
 
+type ProposalAttachment = {
+  id: string;
+  label: string;
+  url: string;
+};
+
 type SubmittedProposal = {
   id: string;
   client_name: string;
@@ -29,6 +35,7 @@ type SubmittedProposal = {
   proposal_date?: string | null;
   response_at?: string | null;
   notes?: string | null;
+  attachments?: ProposalAttachment[];
   payment_link?: string | null;
   selected_items?: string[];
   items?: ProposalItem[];
@@ -88,7 +95,6 @@ export default function SubmittedProposalsPage() {
   const [selectedProposal, setSelectedProposal] = useState<SubmittedProposal | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
-  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
   const [openStatusMenuId, setOpenStatusMenuId] = useState<string | null>(null);
   const statusMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -104,7 +110,6 @@ export default function SubmittedProposalsPage() {
     if (!proposalId || !newStatus) return;
 
     try {
-      setStatusUpdatingId(proposalId);
       setError('');
 
       const response = await fetch('/api/proposals/status', {
@@ -134,8 +139,6 @@ export default function SubmittedProposalsPage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update status');
-    } finally {
-      setStatusUpdatingId(null);
     }
   };
 
@@ -522,6 +525,29 @@ export default function SubmittedProposalsPage() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded border border-gray-200 p-4">
+                <h3 className="mb-2 font-semibold text-gray-900">Attachments</h3>
+                {(selectedProposal.attachments || []).length === 0 ? (
+                  <p className="text-gray-600">No attachments stored.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {(selectedProposal.attachments || []).map((attachment) => (
+                      <div key={attachment.id} className="rounded border border-gray-100 bg-gray-50 p-3">
+                        <p className="font-medium text-gray-900">{attachment.label}</p>
+                        <a
+                          href={attachment.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 block break-all text-blue-600 hover:underline"
+                        >
+                          {attachment.url}
+                        </a>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

@@ -8,6 +8,7 @@ export function generateProposalHTML(
     projectTitle: string;
     notes?: string;
     validUntil?: string;
+    attachments?: Array<{ id: string; label: string; url: string }>;
     terms?: { depositPercent?: number; timeline?: string; additionalTerms?: string };
   },
   company: {
@@ -57,6 +58,10 @@ export function generateProposalHTML(
           .total-row { display: flex; justify-content: space-between; margin: 8px 0; font-size: 12px; }
           .total-row.grand { border-top: 2px solid #0f172a; padding-top: 8px; margin-top: 8px; font-size: 14px; font-weight: bold; }
           .notes { margin-top: 30px; padding: 15px; background: #f8fafc; border-left: 4px solid #2563eb; border-radius: 4px; font-size: 12px; color: #475569; }
+          .attachments { margin-top: 30px; }
+          .attachment-card { margin-bottom: 12px; padding: 12px 14px; border: 1px solid #d1d5db; border-radius: 8px; background: #f8fafc; }
+          .attachment-label { font-size: 12px; font-weight: bold; color: #0f172a; margin-bottom: 4px; }
+          .attachment-link { font-size: 12px; color: #2563eb; word-break: break-all; text-decoration: underline; }
           .terms { margin-top: 30px; padding-top: 20px; border-top: 1px solid #d1d5db; font-size: 11px; white-space: pre-wrap; color: #475569; }
           .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #d1d5db; font-size: 11px; color: #64748b; }
         </style>
@@ -120,6 +125,18 @@ export function generateProposalHTML(
               `).join('')}
             </tbody>
           </table>
+
+          ${proposal.attachments && proposal.attachments.length > 0 ? `
+            <div class="attachments">
+              <h2 class="services-title">Attachments</h2>
+              ${proposal.attachments.map((attachment) => `
+                <div class="attachment-card">
+                  <div class="attachment-label">${attachment.label}</div>
+                  <div class="attachment-link">${attachment.url}</div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
 
           <div class="total-section">
             <div class="totals">

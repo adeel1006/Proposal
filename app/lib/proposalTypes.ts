@@ -39,6 +39,12 @@ export interface ProposalItem {
   quantity?: number;
 }
 
+export interface ProposalAttachment {
+  id: string;
+  label: string;
+  url: string;
+}
+
 export interface ProposalTerms {
   depositPercent?: number;
   timeline?: string;
@@ -59,9 +65,72 @@ export interface Proposal {
   validUntil?: string;
   proposalDate?: string;
   paymentLink?: string;
+  attachments?: ProposalAttachment[];
   terms?: ProposalTerms;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export const MAX_PROPOSAL_ATTACHMENTS = 20;
+
+function isHttpUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export function normalizeProposalAttachments(
+  attachments?: ProposalAttachment[] | null
+): ProposalAttachment[] {
+  if (!Array.isArray(attachments)) {
+    return [];
+  }
+
+  return attachments.slice(0, MAX_PROPOSAL_ATTACHMENTS).map((attachment, index) => ({
+    id: String(attachment?.id || `attachment-${index + 1}`),
+    label: String(attachment?.label || "").trim(),
+    url: String(attachment?.url || "").trim(),
+  }));
+}
+
+export function getCompleteProposalAttachments(
+  attachments?: ProposalAttachment[] | null
+): ProposalAttachment[] {
+  return normalizeProposalAttachments(attachments).filter(
+    (attachment) => attachment.label && attachment.url
+  );
+}
+
+export function validateProposalAttachments(
+  attachments?: ProposalAttachment[] | null
+): string | null {
+  if (!Array.isArray(attachments)) {
+    return null;
+  }
+
+  if (attachments.length > MAX_PROPOSAL_ATTACHMENTS) {
+    return `You can add up to ${MAX_PROPOSAL_ATTACHMENTS} attachments.`;
+  }
+
+  const normalizedAttachments = normalizeProposalAttachments(attachments);
+  for (const [index, attachment] of normalizedAttachments.entries()) {
+    if (!attachment.label && !attachment.url) {
+      continue;
+    }
+
+    if (!attachment.label || !attachment.url) {
+      return `Attachment ${index + 1} must include both text and link.`;
+    }
+
+    if (!isHttpUrl(attachment.url)) {
+      return `Attachment ${index + 1} must use a valid http or https link.`;
+    }
+  }
+
+  return null;
 }
 
 export const DEFAULT_ITEMS: ProposalItem[] = [

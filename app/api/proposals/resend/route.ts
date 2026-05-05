@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendProposalEmail } from '@/lib/emailService';
 import { getSupabaseAdminClient } from '@/lib/supabase';
-import type { Proposal, ProposalItem, CompanyBranding } from '@/app/lib/proposalTypes';
+import {
+  normalizeProposalAttachments,
+  type Proposal,
+  type ProposalItem,
+  type CompanyBranding,
+} from '@/app/lib/proposalTypes';
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,6 +50,7 @@ export async function POST(request: NextRequest) {
       selectedItems: proposalData.selected_items || [],
       companyId: proposalData.company_id || '',
       notes: proposalData.notes || '',
+      attachments: normalizeProposalAttachments(proposalData.attachments),
       paymentLink: proposalData.payment_link || '',
       validUntil: proposalData.valid_until || '',
       terms: proposalData.terms || {},

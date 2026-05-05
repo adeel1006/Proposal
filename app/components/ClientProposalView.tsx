@@ -1,6 +1,6 @@
 'use client';
 
-import { ProposalItem, CompanyBranding } from '@/app/lib/proposalTypes';
+import { ProposalAttachment, ProposalItem, CompanyBranding } from '@/app/lib/proposalTypes';
 
 interface ClientProposalViewProps {
   clientName: string;
@@ -10,6 +10,7 @@ interface ClientProposalViewProps {
   projectDescription?: string;
   selectedItems: string[];
   items: ProposalItem[];
+  attachments?: ProposalAttachment[];
   notes?: string;
   proposalDate?: string;
   createdAt?: string;
@@ -31,6 +32,7 @@ export default function ClientProposalView({
   projectDescription,
   selectedItems,
   items,
+  attachments = [],
   notes,
   proposalDate,
   company,
@@ -61,7 +63,7 @@ export default function ClientProposalView({
         <div className="mb-6 flex gap-3 no-print">
           <button
             onClick={handlePrintPDF}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            className="px-4 py-2 bg-blue-600 !text-white rounded hover:bg-blue-700"
           >
             📄 Print / Save as PDF
           </button>
@@ -190,6 +192,27 @@ export default function ClientProposalView({
             </div>
           </div>
 
+          {attachments.length > 0 && (
+            <div className="mb-8">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Attachments</h2>
+              <div className="space-y-3">
+                {attachments.map((attachment) => (
+                  <div key={attachment.id} className="rounded border border-gray-200 bg-gray-50 p-4">
+                    <div className="font-medium text-gray-900">{attachment.label}</div>
+                    <a
+                      href={attachment.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 block break-all text-sm text-blue-600 hover:underline"
+                    >
+                      {attachment.url}
+                    </a>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Notes */}
           {notes && (
             <div className="mb-8">
@@ -278,7 +301,7 @@ export default function ClientProposalView({
         <div className="mt-6 flex gap-3 no-print">
           <button
             onClick={handlePrintPDF}
-            className="flex-1 px-4 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 font-semibold"
+            className="flex-1 px-4 py-3 bg-blue-600 !text-white rounded hover:bg-blue-700 font-semibold"
           >
             📄 Print / Save as PDF
           </button>

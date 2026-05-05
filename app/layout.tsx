@@ -37,7 +37,7 @@ export default async function RootLayout({
         <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm">
           <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
             <div className="flex items-center gap-4">
-              <img src="/a2zadvert__logo.png" alt="AtoZ Advert Proposals" className="h-20 w-auto" />
+              <img src="/a2zadvert__logo.webp" alt="AtoZ Advert Proposals" className="h-20 w-auto" />
               {/* <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-indigo-600">AtoZ Advert</p>
                 <p className="text-xl font-semibold text-slate-900">Proposals</p>

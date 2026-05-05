@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Proposal, CompanyBranding } from "@/app/lib/proposalTypes";
+import {
+  Proposal,
+  CompanyBranding,
+  normalizeProposalAttachments,
+  validateProposalAttachments,
+} from "@/app/lib/proposalTypes";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 
 type SaveProposalPayload = {
@@ -32,13 +37,16 @@ export async function GET() {
       "items",
       "notes",
       "proposal_date",
+      "attachments",
       "total",
       "status",
       "submitted_at",
       "company",
     ];
 
+    const columnsWithoutAttachments = baseListColumns.filter((column) => column !== "attachments");
     const columnsWithPaymentLink = [...baseListColumns, "payment_link"];
+    const columnsWithPaymentLinkWithoutAttachments = [...columnsWithoutAttachments, "payment_link"];
     const listColumnsWithResponseAt = [...columnsWithPaymentLink, "response_at"].join(", ");
 
     let queryResult = await supabase
@@ -56,7 +64,14 @@ export async function GET() {
     if (queryResult.error?.message?.includes("payment_link")) {
       queryResult = await supabase
         .from("proposals")
-        .select(baseListColumns.join(", "))
+        .select(columnsWithoutAttachments.join(", "))
+        .order("submitted_at", { ascending: false });
+    }
+
+    if (queryResult.error?.message?.includes("attachments")) {
+      queryResult = await supabase
+        .from("proposals")
+        .select(columnsWithPaymentLinkWithoutAttachments.join(", "))
         .order("submitted_at", { ascending: false });
     }
 
@@ -93,6 +108,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const attachmentError = validateProposalAttachments(proposal.attachments);
+    if (attachmentError) {
+      return NextResponse.json({ error: attachmentError }, { status: 400 });
+    }
+
     const supabase = getSupabaseAdminClient();
     const proposalTotal =
       typeof total === "number" && Number.isFinite(total)
@@ -110,6 +130,7 @@ export async function POST(request: NextRequest) {
       selected_items: proposal.selectedItems,
       items: proposal.items,
       notes: proposal.notes || null,
+      attachments: normalizeProposalAttachments(proposal.attachments),
       payment_link: proposal.paymentLink || null,
       valid_until: proposal.validUntil || null,
       proposal_date: proposal.proposalDate || null,
@@ -125,6 +146,15 @@ export async function POST(request: NextRequest) {
       .upsert(payload, { onConflict: "id" })
       .select()
       .single();
+
+    if (queryResult.error?.message?.includes("attachments")) {
+      delete payload.attachments;
+      queryResult = await supabase
+        .from("proposals")
+        .upsert(payload, { onConflict: "id" })
+        .select()
+        .single();
+    }
 
     if (queryResult.error?.message?.includes("payment_link")) {
       delete payload.payment_link;

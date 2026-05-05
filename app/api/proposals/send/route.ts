@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendProposalEmail } from '@/lib/emailService';
-import { Proposal, ProposalItem, CompanyBranding } from '@/app/lib/proposalTypes';
+import {
+  Proposal,
+  ProposalItem,
+  CompanyBranding,
+  normalizeProposalAttachments,
+  validateProposalAttachments,
+} from '@/app/lib/proposalTypes';
 import { getSupabaseAdminClient } from '@/lib/supabase';
 
 function isLocalOrigin(value: string) {
@@ -36,6 +42,7 @@ export async function POST(request: NextRequest) {
       proposalId?: string;
     };
     const resolvedPaymentLink = paymentLink?.trim() || proposal.paymentLink || '';
+    const attachmentError = validateProposalAttachments(proposal.attachments);
 
     if (!customerEmail || !customerName || !proposal || !company) {
       return NextResponse.json(
@@ -43,6 +50,18 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    if (attachmentError) {
+      return NextResponse.json(
+        { success: false, error: attachmentError },
+        { status: 400 }
+      );
+    }
+
+    const normalizedProposal = {
+      ...proposal,
+      attachments: normalizeProposalAttachments(proposal.attachments),
+    };
 
     let pdfBase64 = body.pdfBase64;
 
@@ -83,6 +102,7 @@ export async function POST(request: NextRequest) {
             client_name: proposal.clientName,
             client_email: proposal.clientEmail || customerEmail,
             project_title: proposal.projectTitle,
+            attachments: normalizedProposal.attachments,
             payment_link: resolvedPaymentLink || null,
             status: 'submitted',
             pdf_base64: pdfBase64,
@@ -115,7 +135,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await sendProposalEmail(customerEmail, customerName, proposal, company, items, resolvedPaymentLink || undefined, {
+    await sendProposalEmail(customerEmail, customerName, normalizedProposal, company, items, resolvedPaymentLink || undefined, {
       appUrl,
     });
 

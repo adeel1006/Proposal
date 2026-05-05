@@ -1,6 +1,6 @@
 'use client';
 
-import { CompanyBranding, ProposalItem } from '@/app/lib/proposalTypes';
+import { CompanyBranding, ProposalAttachment, ProposalItem } from '@/app/lib/proposalTypes';
 
 interface ProposalPreviewProps {
   clientName: string;
@@ -12,6 +12,7 @@ interface ProposalPreviewProps {
   showDownloadHtml?: boolean;
   currency?: string;
   paymentLink?: string;
+  attachments?: ProposalAttachment[];
   usdTotal?: number;
   companyCurrencyTotal?: number;
   company?: CompanyBranding | null;
@@ -27,6 +28,7 @@ export default function ProposalPreview({
   showDownloadHtml = true,
   currency = 'USD',
   paymentLink,
+  attachments = [],
   usdTotal,
   companyCurrencyTotal,
   company,
@@ -63,17 +65,17 @@ export default function ProposalPreview({
   return (
     <div className="space-y-4">
       {/* Action Buttons */}
-      <div className="flex gap-2 no-print">
+      <div className="flex flex-wrap gap-2 no-print">
         <button
           onClick={handlePrintPDF}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold !text-white shadow-sm transition hover:bg-slate-800"
         >
           📄 Print / Save as PDF
         </button>
         {showDownloadHtml && (
           <button
             onClick={handleDownloadHTML}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+            className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
           >
             ⬇️ Download HTML
           </button>
@@ -83,26 +85,29 @@ export default function ProposalPreview({
       {/* Proposal Content */}
       <div
         id="proposal-content"
-        className="bg-white p-8 rounded-lg shadow print:shadow-none print:p-0"
+        className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm print:rounded-none print:border-0 print:shadow-none print:p-0"
       >
         {/* Header */}
-        <div className="border-b-2 border-gray-300 pb-6 mb-6">
-          <div className="text-3xl font-bold text-gray-900 mb-2">PROJECT PROPOSAL</div>
-          <div className="text-sm text-gray-600" suppressHydrationWarning>
+        <div className="border-b border-slate-200 bg-slate-50 px-8 py-6">
+          <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
+            Proposal Document
+          </div>
+          <div className="mt-2 text-3xl font-semibold text-slate-900">Project Proposal</div>
+          <div className="mt-2 text-sm text-slate-500" suppressHydrationWarning>
             Date: {formatDate(undefined)}
             {validUntil && ` | Valid Until: ${formatDate(validUntil)}`}
           </div>
         </div>
 
         {/* Client Info */}
-        <div className="grid grid-cols-2 gap-8 mb-8">
-          <div>
-            <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">
+        <div className="grid grid-cols-2 gap-8 px-8 py-8">
+          <div className="space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
               From
             </div>
-            <div className="font-semibold text-gray-900">{company?.businessName || 'Your Company'}</div>
-            <div className="text-sm text-gray-600">{company?.email || 'company@example.com'}</div>
-            {company?.mobileNumber && <div className="text-sm text-gray-600">{company.mobileNumber}</div>}
+            <div className="text-lg font-semibold text-slate-900">{company?.businessName || 'Your Company'}</div>
+            <div className="text-sm text-slate-600">{company?.email || 'company@example.com'}</div>
+            {company?.mobileNumber && <div className="text-sm text-slate-600">{company.mobileNumber}</div>}
             {company?.website && (
               <a
                 href={company.website}
@@ -114,50 +119,52 @@ export default function ProposalPreview({
               </a>
             )}
           </div>
-          <div>
-            <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">
+          <div className="space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
               To
             </div>
-            <div className="font-semibold text-gray-900">
+            <div className="text-lg font-semibold text-slate-900">
               {clientName || 'Client Name'}
             </div>
-            <div className="text-sm text-gray-600">{projectTitle || 'Project Title'}</div>
+            <div className="text-sm text-slate-600">{projectTitle || 'Project Title'}</div>
           </div>
         </div>
 
         {/* Project Title */}
         {projectTitle && (
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">{projectTitle}</h1>
-            <p className="text-gray-600">For: {clientName || 'Client'}</p>
+          <div className="px-8 pb-2">
+            <h1 className="mb-2 text-2xl font-semibold text-slate-900">{projectTitle}</h1>
+            <p className="text-slate-600">For: {clientName || 'Client'}</p>
           </div>
         )}
 
         {/* Services */}
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Services Included</h2>
-          <table className="w-full mb-4">
+        <div className="px-8 pb-2">
+          <div className="mb-4 text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
+            Services Included
+          </div>
+          <table className="mb-4 w-full">
             <thead>
-              <tr className="border-b-2 border-gray-300">
-                <th className="text-left py-2 font-semibold text-gray-700">Service</th>
-                <th className="text-left py-2 font-semibold text-gray-700">Description</th>
-                <th className="text-right py-2 font-semibold text-gray-700">Price</th>
+              <tr className="border-b border-slate-200">
+                <th className="py-2 text-left font-semibold text-slate-600">Service</th>
+                <th className="py-2 text-left font-semibold text-slate-600">Description</th>
+                <th className="py-2 text-right font-semibold text-slate-600">Price</th>
               </tr>
             </thead>
             <tbody>
               {selectedItemsList.length > 0 ? (
                 selectedItemsList.map((item) => (
-                  <tr key={item.id} className="border-b border-gray-200">
-                    <td className="py-3 font-medium text-gray-900">{item.name}</td>
-                    <td className="py-3 text-gray-600 text-sm">{item.description}</td>
-                    <td className="py-3 text-right font-semibold text-gray-900">
+                  <tr key={item.id} className="border-b border-slate-100">
+                    <td className="py-3 font-medium text-slate-900">{item.name}</td>
+                    <td className="py-3 text-sm text-slate-600">{item.description}</td>
+                    <td className="py-3 text-right font-semibold text-slate-900">
                       {item.currency} {(item.price * (item.quantity || 1)).toFixed(2)}
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={3} className="py-4 text-center text-gray-500">
+                  <td colSpan={3} className="py-4 text-center text-slate-500">
                     No services selected
                   </td>
                 </tr>
@@ -166,27 +173,27 @@ export default function ProposalPreview({
           </table>
 
           {/* Total */}
-          <div className="flex flex-col gap-4 justify-end mb-6">
-            <div className="bg-gray-900 text-white p-4 rounded">
-              <div className="flex gap-8 flex-wrap">
+          <div className="mt-6 flex flex-col gap-4 pb-2">
+            <div className="rounded-2xl bg-slate-950 p-4 text-white">
+              <div className="flex flex-wrap gap-8">
                 <div>
-                  <div className="text-sm text-gray-300">SUBTOTAL</div>
-                  <div className="text-xl font-bold">{currency} {(companyCurrencyTotal || total).toFixed(2)}</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-400">Subtotal</div>
+                  <div className="text-xl font-semibold">{currency} {(companyCurrencyTotal || total).toFixed(2)}</div>
                   {currency !== 'USD' && usdTotal !== undefined && (
-                    <div className="text-xs text-gray-400 mt-1">USD {usdTotal.toFixed(2)}</div>
+                    <div className="mt-1 text-xs text-slate-300">USD {usdTotal.toFixed(2)}</div>
                   )}
                 </div>
                 <div>
-                  <div className="text-sm text-gray-300">TOTAL</div>
-                  <div className="text-2xl font-bold">{currency} {(companyCurrencyTotal || total).toFixed(2)}</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-400">Total</div>
+                  <div className="text-2xl font-semibold">{currency} {(companyCurrencyTotal || total).toFixed(2)}</div>
                   {currency !== 'USD' && usdTotal !== undefined && (
-                    <div className="text-xs text-gray-400 mt-1">USD {usdTotal.toFixed(2)}</div>
+                    <div className="mt-1 text-xs text-slate-300">USD {usdTotal.toFixed(2)}</div>
                   )}
                 </div>
               </div>
             </div>
-            <div className="bg-white border border-gray-200 p-4 rounded">
-              <div className="text-sm text-gray-500 uppercase tracking-wide mb-2">Payment Link</div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Payment Link</div>
               {paymentLink ? (
                 <a
                   href={paymentLink}
@@ -203,23 +210,44 @@ export default function ProposalPreview({
           </div>
         </div>
 
+        {attachments.length > 0 && (
+          <div className="px-8 pb-2">
+            <div className="mb-4 text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">Attachments</div>
+            <div className="space-y-3">
+              {attachments.map((attachment) => (
+                <div key={attachment.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="font-medium text-slate-900">{attachment.label}</div>
+                  <a
+                    href={attachment.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="mt-1 block break-all text-sm text-blue-600 hover:underline"
+                  >
+                    {attachment.url}
+                  </a>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Notes */}
         {notes && (
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Additional Notes</h2>
-            <div className="bg-gray-50 p-4 rounded border border-gray-300 whitespace-pre-wrap text-gray-700">
+          <div className="px-8 pb-2">
+            <div className="mb-4 text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">Additional Notes</div>
+            <div className="whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 p-4 text-slate-700">
               {notes}
             </div>
           </div>
         )}
 
         {/* Footer */}
-        <div className="border-t-2 border-gray-300 pt-6 mt-8">
-          <p className="text-sm text-gray-600">
+        <div className="mt-8 border-t border-slate-200 px-8 py-6">
+          <p className="text-sm text-slate-600">
             Thank you for considering our proposal. Please contact us to discuss further.
           </p>
           {company?.website && (
-            <p className="mt-3 text-sm text-gray-600">
+            <p className="mt-3 text-sm text-slate-600">
               🌐 {' '}
               <a
                 href={company.website}
@@ -231,7 +259,7 @@ export default function ProposalPreview({
               </a>
             </p>
           )}
-          <div className="mt-4 text-xs text-gray-500">
+          <div className="mt-4 text-xs text-slate-500">
             <p>Terms & Conditions:</p>
             <ul className="list-disc list-inside mt-2">
               <li>50% deposit required to begin the project</li>

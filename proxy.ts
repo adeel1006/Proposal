@@ -19,6 +19,10 @@ export function proxy(request: NextRequest) {
 
   // If not authenticated and trying to access protected routes, redirect to login
   if (!isAuthenticated && pathname !== '/login') {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     return NextResponse.redirect(new URL('/login', request.url));
   }
 

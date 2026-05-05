@@ -1,98 +1,127 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import ItemEditor from '@/app/components/ItemEditor';
-import { ProposalEditorSkeleton, SelectSkeleton, ServiceListSkeleton } from '@/app/components/LoadingSkeletons';
-import ProposalPreview from '@/app/components/ProposalPreview';
-import { generateProposalHTML } from '@/lib/clientPdfService';
+import { useState, useEffect } from "react";
+import ItemEditor from "@/app/components/ItemEditor";
+import {
+  ProposalEditorSkeleton,
+  SelectSkeleton,
+  ServiceListSkeleton,
+} from "@/app/components/LoadingSkeletons";
+import ProposalPreview from "@/app/components/ProposalPreview";
+import { generateProposalHTML } from "@/lib/clientPdfService";
 import {
   Proposal,
+  ProposalAttachment,
   ProposalItem,
   DEFAULT_ITEMS,
   DEFAULT_TERMS,
+  MAX_PROPOSAL_ATTACHMENTS,
   generateProposalId,
   getSelectedItemsTotal,
   getSelectedItemsTotalUSD,
   getSelectedItemsTotalInCurrency,
-} from '@/app/lib/proposalTypes';
-import { useCompanies } from '@/lib/hooks/useCompanies';
-import { useServices } from '@/lib/hooks/useServices';
-import { useDraftProposals } from '@/lib/hooks/useDraftProposals';
+  normalizeProposalAttachments,
+  validateProposalAttachments,
+} from "@/app/lib/proposalTypes";
+import { useCompanies } from "@/lib/hooks/useCompanies";
+import { useServices } from "@/lib/hooks/useServices";
+import { useDraftProposals } from "@/lib/hooks/useDraftProposals";
 
 type Html2PdfInstance = {
   set: (options: Record<string, unknown>) => Html2PdfInstance;
   from: (element: HTMLElement) => Html2PdfInstance;
-  outputPdf: (outputType: 'dataurlstring') => Promise<string>;
+  outputPdf: (outputType: "dataurlstring") => Promise<string>;
 };
 
 type Html2PdfFactory = () => Html2PdfInstance;
 
+function createAttachment(): ProposalAttachment {
+  return {
+    id: `attachment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    label: "",
+    url: "",
+  };
+}
+
 function ensureProposalId(proposal: Proposal): Proposal {
-  if (proposal.id && proposal.id.trim() !== '') {
-    return proposal;
+  if (proposal.id && proposal.id.trim() !== "") {
+    return {
+      ...proposal,
+      attachments: normalizeProposalAttachments(proposal.attachments),
+    };
   }
 
   return {
     ...proposal,
     id: generateProposalId(),
+    attachments: normalizeProposalAttachments(proposal.attachments),
   };
 }
 
-function createFreshProposal(companyId = '', items: ProposalItem[] = DEFAULT_ITEMS): Proposal {
+function createFreshProposal(
+  companyId = "",
+  items: ProposalItem[] = DEFAULT_ITEMS,
+): Proposal {
   return {
     id: generateProposalId(),
     companyId,
-    clientName: '',
-    projectTitle: '',
+    clientName: "",
+    projectTitle: "",
     selectedItems: [],
     items,
-    paymentLink: '',
+    paymentLink: "",
+    attachments: [],
     terms: DEFAULT_TERMS,
   };
 }
 
 export default function AdminDashboard() {
   const { companies, loading: companiesLoading } = useCompanies();
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
-  const { services: companyServices, loading: servicesLoading } = useServices(selectedCompanyId);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
+  const { services: companyServices, loading: servicesLoading } =
+    useServices(selectedCompanyId);
   const { saveDraft } = useDraftProposals({ autoFetch: false });
 
   const [proposal, setProposal] = useState<Proposal>({
-    id: '',
-    companyId: '',
-    clientName: '',
-    projectTitle: '',
+    id: "",
+    companyId: "",
+    clientName: "",
+    projectTitle: "",
     selectedItems: [],
     items: DEFAULT_ITEMS,
-    paymentLink: '',
+    paymentLink: "",
+    attachments: [],
     terms: DEFAULT_TERMS,
   });
 
-  const [activeTab, setActiveTab] = useState<'general' | 'items' | 'preview'>('general');
-  const [saveMessage, setSaveMessage] = useState('');
+  const [activeTab, setActiveTab] = useState<"general" | "items" | "preview">(
+    "general",
+  );
+  const [saveMessage, setSaveMessage] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
-  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerEmail, setCustomerEmail] = useState("");
   const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const selectedCompany = companies.find((c) => c.id === selectedCompanyId) || null;
+  const selectedCompany =
+    companies.find((c) => c.id === selectedCompanyId) || null;
   const setTimedMessage = (message: string, durationMs = 3000) => {
     setSaveMessage(message);
-    setTimeout(() => setSaveMessage(''), durationMs);
+    setTimeout(() => setSaveMessage(""), durationMs);
   };
   const getSaveMessageTone = () => {
-    if (saveMessage.startsWith('✅')) {
-      return 'bg-green-50 border-green-500 text-green-900';
+    if (saveMessage.startsWith("✅")) {
+      return "bg-green-50 border-green-500 text-green-900";
     }
 
-    if (saveMessage.startsWith('❌')) {
-      return 'bg-red-50 border-red-500 text-red-900';
+    if (saveMessage.startsWith("❌")) {
+      return "bg-red-50 border-red-500 text-red-900";
     }
 
-    return 'bg-blue-50 border-blue-500 text-blue-900';
+    return "bg-blue-50 border-blue-500 text-blue-900";
   };
 
   // Load proposal draft from localStorage & initialize ID on client side only
   useEffect(() => {
-    const savedProposal = localStorage.getItem('currentProposal');
+    const savedProposal = localStorage.getItem("currentProposal");
     if (savedProposal) {
       try {
         const loadedProposal = JSON.parse(savedProposal) as Proposal;
@@ -102,7 +131,7 @@ export default function AdminDashboard() {
           setSelectedCompanyId(normalizedProposal.companyId);
         }
       } catch (e) {
-        console.error('Error loading proposal:', e);
+        console.error("Error loading proposal:", e);
       }
     } else {
       setProposal((prev) => ({
@@ -125,14 +154,16 @@ export default function AdminDashboard() {
       return {
         ...prev,
         items: companyServices,
-        selectedItems: prev.selectedItems.filter((itemId) => allowedItemIds.has(itemId)),
+        selectedItems: prev.selectedItems.filter((itemId) =>
+          allowedItemIds.has(itemId),
+        ),
       };
     });
   }, [selectedCompanyId, companyServices]);
 
   // Auto-save to localStorage
   useEffect(() => {
-    localStorage.setItem('currentProposal', JSON.stringify(proposal));
+    localStorage.setItem("currentProposal", JSON.stringify(proposal));
   }, [proposal]);
 
   // Auto-save draft to database
@@ -144,9 +175,9 @@ export default function AdminDashboard() {
     const timeout = setTimeout(() => {
       saveDraft({
         ...proposal,
-        status: 'draft',
+        status: "draft",
       }).catch((err) => {
-        console.error('Failed to auto-save draft:', err);
+        console.error("Failed to auto-save draft:", err);
       });
     }, 2000);
 
@@ -156,7 +187,9 @@ export default function AdminDashboard() {
   const handleSaveItem = (updatedItem: ProposalItem) => {
     setProposal((prev) => ({
       ...prev,
-      items: prev.items.map((item) => (item.id === updatedItem.id ? updatedItem : item)),
+      items: prev.items.map((item) =>
+        item.id === updatedItem.id ? updatedItem : item,
+      ),
       updatedAt: new Date().toISOString(),
     }));
   };
@@ -173,11 +206,11 @@ export default function AdminDashboard() {
   const handleAddItem = () => {
     const newItem: ProposalItem = {
       id: `item-${Date.now()}`,
-      name: 'New Service',
-      description: 'Description here',
+      name: "New Service",
+      description: "Description here",
       price: 0,
-      currency: 'USD',
-      category: 'Custom',
+      currency: "USD",
+      category: "Custom",
       quantity: 1,
     };
     setProposal((prev) => ({
@@ -196,22 +229,56 @@ export default function AdminDashboard() {
     }));
   };
 
-  const handleExportProposal = () => {
-    const dataStr = JSON.stringify(proposal, null, 2);
-    const element = document.createElement('a');
-    element.setAttribute('href', 'data:text/json;charset=utf-8,' + encodeURIComponent(dataStr));
-    element.setAttribute('download', `${proposal.projectTitle || 'proposal'}.json`);
-    element.style.display = 'none';
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-    setTimedMessage('✅ Proposal exported!');
+  const handleAddAttachment = () => {
+    if ((proposal.attachments?.length || 0) >= MAX_PROPOSAL_ATTACHMENTS) {
+      setTimedMessage(
+        `Please keep attachments to ${MAX_PROPOSAL_ATTACHMENTS} or fewer.`,
+        4000,
+      );
+      return;
+    }
+
+    setProposal((prev) => ({
+      ...prev,
+      attachments: [
+        ...normalizeProposalAttachments(prev.attachments),
+        createAttachment(),
+      ],
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
+  const handleAttachmentChange = (
+    attachmentId: string,
+    field: "label" | "url",
+    value: string,
+  ) => {
+    setProposal((prev) => ({
+      ...prev,
+      attachments: normalizeProposalAttachments(prev.attachments).map(
+        (attachment) =>
+          attachment.id === attachmentId
+            ? { ...attachment, [field]: value }
+            : attachment,
+      ),
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
+  const handleRemoveAttachment = (attachmentId: string) => {
+    setProposal((prev) => ({
+      ...prev,
+      attachments: normalizeProposalAttachments(prev.attachments).filter(
+        (attachment) => attachment.id !== attachmentId,
+      ),
+      updatedAt: new Date().toISOString(),
+    }));
   };
 
   const handleNewProposal = () => {
-    if (confirm('Create a new proposal? Current changes will be saved.')) {
+    if (confirm("Create a new proposal? Current changes will be saved.")) {
       const itemsToUse = selectedCompanyId ? companyServices : DEFAULT_ITEMS;
-      setProposal(createFreshProposal(selectedCompanyId || '', itemsToUse));
+      setProposal(createFreshProposal(selectedCompanyId || "", itemsToUse));
     }
   };
 
@@ -227,52 +294,68 @@ export default function AdminDashboard() {
 
   const handleSendProposalEmail = async () => {
     if (!customerEmail || !proposal.clientName) {
-      setTimedMessage('❌ Please enter customer email and client name');
+      setTimedMessage("❌ Please enter customer email and client name");
       return;
     }
 
     if (!selectedCompany) {
-      setTimedMessage('❌ Please select a company');
+      setTimedMessage("❌ Please select a company");
       return;
     }
 
     if (proposal.selectedItems.length === 0) {
-      setTimedMessage('❌ Please select at least one service');
+      setTimedMessage("❌ Please select at least one service");
       return;
     }
 
     // Ensure proposal has an ID
     const proposalWithId = ensureProposalId(proposal);
-    if (proposalWithId.id !== proposal.id) {
-      setProposal(proposalWithId);
+    const attachmentError = validateProposalAttachments(
+      proposalWithId.attachments,
+    );
+    if (attachmentError) {
+      setTimedMessage(`Error: ${attachmentError}`, 5000);
+      return;
+    }
+
+    const sanitizedProposal = {
+      ...proposalWithId,
+      attachments: normalizeProposalAttachments(proposalWithId.attachments),
+    };
+
+    if (sanitizedProposal.id !== proposal.id) {
+      setProposal(sanitizedProposal);
     }
 
     setIsSendingEmail(true);
-    setSaveMessage(''); // Clear previous messages
+    setSaveMessage(""); // Clear previous messages
 
     try {
       // Validate PDF library
-      const html2pdf = (window as Window & { html2pdf?: Html2PdfFactory }).html2pdf;
+      const html2pdf = (window as Window & { html2pdf?: Html2PdfFactory })
+        .html2pdf;
       if (!html2pdf) {
-        throw new Error('PDF library (html2pdf) not loaded. Please refresh the page and try again.');
+        throw new Error(
+          "PDF library (html2pdf) not loaded. Please refresh the page and try again.",
+        );
       }
 
       // Generate PDF HTML
-      const selectedItems = proposalWithId.items.filter((item) =>
-        proposalWithId.selectedItems.includes(item.id)
+      const selectedItems = sanitizedProposal.items.filter((item) =>
+        sanitizedProposal.selectedItems.includes(item.id),
       );
       const proposalTotal = getSelectedItemsTotal(
-        proposalWithId.selectedItems,
-        proposalWithId.items
+        sanitizedProposal.selectedItems,
+        sanitizedProposal.items,
       );
 
-      setSaveMessage('Saving proposal to database...');
+      setSaveMessage("Saving proposal to database...");
 
-      const saveResponse = await fetch('/api/proposals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const saveResponse = await fetch("/api/proposals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          proposal: proposalWithId,
+          proposal: sanitizedProposal,
           company: selectedCompany,
           total: proposalTotal,
           customerEmail,
@@ -282,51 +365,53 @@ export default function AdminDashboard() {
       const saveResult = await saveResponse.json();
 
       if (!saveResponse.ok) {
-        throw new Error(saveResult?.error || 'Failed to save proposal to database');
+        throw new Error(
+          saveResult?.error || "Failed to save proposal to database",
+        );
       }
 
       const htmlContent = generateProposalHTML(
-        proposalWithId,
+        sanitizedProposal,
         selectedCompany,
-        selectedItems.map(item => ({
+        selectedItems.map((item) => ({
           ...item,
           quantity: item.quantity || 1,
-        }))
+        })),
       );
 
       // Create element and generate PDF
-      const element = document.createElement('div');
+      const element = document.createElement("div");
       element.innerHTML = htmlContent;
 
-      setSaveMessage('⏳ Generating PDF...');
+      setSaveMessage("⏳ Generating PDF...");
 
       const pdfBase64 = await new Promise<string>((resolve, reject) => {
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
         try {
           timeoutId = setTimeout(() => {
-            reject(new Error('PDF generation timeout. Please try again.'));
+            reject(new Error("PDF generation timeout. Please try again."));
           }, 30000); // 30 second timeout
 
           html2pdf()
             .set({
               margin: 10,
-              filename: `${proposal.projectTitle || 'proposal'}.pdf`,
-              image: { type: 'jpeg', quality: 0.98 },
+              filename: `${proposal.projectTitle || "proposal"}.pdf`,
+              image: { type: "jpeg", quality: 0.98 },
               html2canvas: { scale: 2, useCORS: true, logging: false },
-              jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' },
-              pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+              jsPDF: { orientation: "portrait", unit: "mm", format: "a4" },
+              pagebreak: { mode: ["avoid-all", "css", "legacy"] },
             })
             .from(element)
-            .outputPdf('dataurlstring')
+            .outputPdf("dataurlstring")
             .then((pdf: string) => {
               if (timeoutId) clearTimeout(timeoutId);
-              if (!pdf || typeof pdf !== 'string') {
-                throw new Error('PDF generation returned invalid data.');
+              if (!pdf || typeof pdf !== "string") {
+                throw new Error("PDF generation returned invalid data.");
               }
-              const base64 = pdf.replace(/^data:application\/pdf;base64,/, '');
+              const base64 = pdf.replace(/^data:application\/pdf;base64,/, "");
               if (!base64) {
-                throw new Error('Failed to convert PDF to base64.');
+                throw new Error("Failed to convert PDF to base64.");
               }
               resolve(base64);
             })
@@ -340,20 +425,20 @@ export default function AdminDashboard() {
         }
       });
 
-      setSaveMessage('📧 Sending proposal email...');
+      setSaveMessage("📧 Sending proposal email...");
 
       // Send email with PDF
-      const response = await fetch('/api/proposals/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/proposals/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customerEmail,
-          customerName: proposalWithId.clientName,
-          proposal: proposalWithId,
+          customerName: sanitizedProposal.clientName,
+          proposal: sanitizedProposal,
           company: selectedCompany,
           items: selectedItems,
           pdfBase64,
-          paymentLink: proposalWithId.paymentLink || '',
+          paymentLink: sanitizedProposal.paymentLink || "",
         }),
       });
 
@@ -361,19 +446,23 @@ export default function AdminDashboard() {
 
       if (response.ok) {
         const nextProposal = createFreshProposal(
-          selectedCompanyId || '',
-          selectedCompanyId ? companyServices : DEFAULT_ITEMS
+          selectedCompanyId || "",
+          selectedCompanyId ? companyServices : DEFAULT_ITEMS,
         );
         setProposal(nextProposal);
-        setActiveTab('general');
+        setActiveTab("general");
         setTimedMessage(`✅ ${result.message}. New proposal started.`, 5000);
-        setCustomerEmail('');
+        setCustomerEmail("");
       } else {
-        setTimedMessage(`❌ ${result.error || 'Failed to send proposal'}`, 5000);
+        setTimedMessage(
+          `❌ ${result.error || "Failed to send proposal"}`,
+          5000,
+        );
       }
     } catch (error) {
-      console.error('Error sending proposal:', error);
-      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+      console.error("Error sending proposal:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       setTimedMessage(`❌ ${errorMessage}`, 5000);
     } finally {
       setIsSendingEmail(false);
@@ -397,21 +486,27 @@ export default function AdminDashboard() {
       setIsConverting(true);
       try {
         // Calculate USD total (always in USD)
-        const usdAmount = await getSelectedItemsTotalUSD(proposal.selectedItems, proposal.items);
+        const usdAmount = await getSelectedItemsTotalUSD(
+          proposal.selectedItems,
+          proposal.items,
+        );
         setUsdTotal(usdAmount);
 
         // Calculate total in company currency
-        const companyCurrency = selectedCompany?.currency || 'USD';
+        const companyCurrency = selectedCompany?.currency || "USD";
         const companyAmount = await getSelectedItemsTotalInCurrency(
           proposal.selectedItems,
           proposal.items,
-          companyCurrency
+          companyCurrency,
         );
         setCompanyCurrencyTotal(companyAmount);
       } catch (error) {
-        console.error('Error calculating currency totals:', error);
+        console.error("Error calculating currency totals:", error);
         // Fallback to simple total
-        const fallbackTotal = getSelectedItemsTotal(proposal.selectedItems, proposal.items);
+        const fallbackTotal = getSelectedItemsTotal(
+          proposal.selectedItems,
+          proposal.items,
+        );
         setUsdTotal(fallbackTotal);
         setCompanyCurrencyTotal(fallbackTotal);
       } finally {
@@ -429,18 +524,19 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <div className="max-w-7xl mx-auto p-6">
+    <div className="min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#eef2ff_100%)] text-slate-900">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         {/* Proposal ID & Actions */}
-        <div className="mb-6 bg-white p-4 rounded-lg shadow flex justify-between items-center">
-          <div>
-            <p className="text-sm font-bold text-gray-600">Proposal ID</p>
-            <p className="font-mono font-bold text-lg">{proposal.id}</p>
-          </div>
-          <div className="flex gap-2">
+        <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-bold text-gray-600">Proposal ID</p>
+              <p className="font-mono font-bold text-lg">{proposal.id}</p>
+            </div>
+          <div className="flex justify-start sm:justify-end">
             <button
               onClick={handleNewProposal}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              className="rounded-xl bg-slate-900 px-4 py-2 font-medium !text-white transition hover:bg-slate-700"
             >
               ✚ New Proposal
             </button>
@@ -451,36 +547,37 @@ export default function AdminDashboard() {
               ⬇️ Export JSON
             </button> */}
           </div>
+          </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-6">
+        <div className="mb-6 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white/80 p-2 shadow-sm backdrop-blur">
           <button
-            onClick={() => setActiveTab('general')}
-            className={`px-6 py-3 rounded font-medium transition ${
-              activeTab === 'general'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-50'
+            onClick={() => setActiveTab("general")}
+            className={`rounded-xl px-5 py-3 text-sm font-semibold transition ${
+              activeTab === "general"
+                ? "bg-slate-900 !text-white shadow-sm"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
             }`}
           >
             📝 General Info
           </button>
           <button
-            onClick={() => setActiveTab('items')}
-            className={`px-6 py-3 rounded font-medium transition ${
-              activeTab === 'items'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-50'
+            onClick={() => setActiveTab("items")}
+            className={`rounded-xl px-5 py-3 text-sm font-semibold transition ${
+              activeTab === "items"
+                ? "bg-slate-900 !text-white shadow-sm"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
             }`}
           >
             📦 Services ({proposal.items.length})
           </button>
           <button
-            onClick={() => setActiveTab('preview')}
-            className={`px-6 py-3 rounded font-medium transition ${
-              activeTab === 'preview'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-50'
+            onClick={() => setActiveTab("preview")}
+            className={`rounded-xl px-5 py-3 text-sm font-semibold transition ${
+              activeTab === "preview"
+                ? "bg-slate-900 !text-white shadow-sm"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
             }`}
           >
             👁️ Preview
@@ -488,12 +585,12 @@ export default function AdminDashboard() {
         </div>
 
         {/* General Info Tab */}
-        {activeTab === 'general' && (
+        {activeTab === "general" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left: Edit Form */}
             <div className="lg:col-span-1 space-y-4">
-              <div className="bg-white p-6 rounded-lg shadow">
-                <h2 className="text-lg font-bold mb-4">Company</h2>
+              <div className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
+                <h2 className="mb-4 text-lg font-semibold text-slate-900">Company</h2>
 
                 <div className="space-y-4">
                   <div>
@@ -505,13 +602,16 @@ export default function AdminDashboard() {
                     ) : companies.length === 0 ? (
                       <div className="p-3 bg-yellow-50 border border-yellow-300 rounded text-sm text-yellow-800">
                         <p>No companies found. </p>
-                        <a href="/admin/companies" className="text-blue-600 hover:underline font-medium">
+                        <a
+                          href="/admin/companies"
+                          className="text-blue-600 hover:underline font-medium"
+                        >
                           Create a company first
                         </a>
                       </div>
                     ) : (
                       <select
-                        value={selectedCompanyId || ''}
+                        value={selectedCompanyId || ""}
                         onChange={(e) => handleSelectCompany(e.target.value)}
                         className="w-full border rounded px-3 py-2"
                         required
@@ -528,7 +628,9 @@ export default function AdminDashboard() {
 
                   {selectedCompany && (
                     <div className="p-3 bg-blue-50 border border-blue-300 rounded text-sm">
-                      <p className="font-medium text-gray-900">{selectedCompany.businessName}</p>
+                      <p className="font-medium text-gray-900">
+                        {selectedCompany.businessName}
+                      </p>
                       {selectedCompany.website && (
                         <p className="text-gray-600 text-xs break-all">
                           🌐 {selectedCompany.website}
@@ -560,7 +662,10 @@ export default function AdminDashboard() {
                       type="text"
                       value={proposal.clientName}
                       onChange={(e) =>
-                        setProposal((prev) => ({ ...prev, clientName: e.target.value }))
+                        setProposal((prev) => ({
+                          ...prev,
+                          clientName: e.target.value,
+                        }))
                       }
                       className="w-full border rounded px-3 py-2"
                       placeholder="Client company name"
@@ -573,9 +678,12 @@ export default function AdminDashboard() {
                     </label>
                     <input
                       type="email"
-                      value={proposal.clientEmail || ''}
+                      value={proposal.clientEmail || ""}
                       onChange={(e) =>
-                        setProposal((prev) => ({ ...prev, clientEmail: e.target.value }))
+                        setProposal((prev) => ({
+                          ...prev,
+                          clientEmail: e.target.value,
+                        }))
                       }
                       className="w-full border rounded px-3 py-2"
                       placeholder="client@example.com"
@@ -588,9 +696,12 @@ export default function AdminDashboard() {
                     </label>
                     <input
                       type="tel"
-                      value={proposal.clientPhoneNumber || ''}
+                      value={proposal.clientPhoneNumber || ""}
                       onChange={(e) =>
-                        setProposal((prev) => ({ ...prev, clientPhoneNumber: e.target.value }))
+                        setProposal((prev) => ({
+                          ...prev,
+                          clientPhoneNumber: e.target.value,
+                        }))
                       }
                       className="w-full border rounded px-3 py-2"
                       placeholder="+1 (555) 123-4567"
@@ -605,7 +716,10 @@ export default function AdminDashboard() {
                       type="text"
                       value={proposal.projectTitle}
                       onChange={(e) =>
-                        setProposal((prev) => ({ ...prev, projectTitle: e.target.value }))
+                        setProposal((prev) => ({
+                          ...prev,
+                          projectTitle: e.target.value,
+                        }))
                       }
                       className="w-full border rounded px-3 py-2"
                       placeholder="e.g., E-Commerce Platform"
@@ -617,9 +731,12 @@ export default function AdminDashboard() {
                       Project Description
                     </label>
                     <textarea
-                      value={proposal.projectDescription || ''}
+                      value={proposal.projectDescription || ""}
                       onChange={(e) =>
-                        setProposal((prev) => ({ ...prev, projectDescription: e.target.value }))
+                        setProposal((prev) => ({
+                          ...prev,
+                          projectDescription: e.target.value,
+                        }))
                       }
                       className="w-full border rounded px-3 py-2"
                       rows={3}
@@ -633,15 +750,19 @@ export default function AdminDashboard() {
                     </label>
                     <input
                       type="url"
-                      value={proposal.paymentLink || ''}
+                      value={proposal.paymentLink || ""}
                       onChange={(e) =>
-                        setProposal((prev) => ({ ...prev, paymentLink: e.target.value }))
+                        setProposal((prev) => ({
+                          ...prev,
+                          paymentLink: e.target.value,
+                        }))
                       }
                       className="w-full border rounded px-3 py-2"
                       placeholder="https://your-payment-page.com/checkout"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      This link will be included in the proposal email and shown in the preview.
+                      This link will be included in the proposal email and shown
+                      in the preview.
                     </p>
                   </div>
 
@@ -651,22 +772,27 @@ export default function AdminDashboard() {
                     </label>
                     <input
                       type="date"
-                      value={proposal.proposalDate || ''}
+                      value={proposal.proposalDate || ""}
                       onChange={(e) =>
-                        setProposal((prev) => ({ ...prev, proposalDate: e.target.value }))
+                        setProposal((prev) => ({
+                          ...prev,
+                          proposalDate: e.target.value,
+                        }))
                       }
                       className="w-full border rounded px-3 py-2"
                     />
                   </div>
-
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Additional Notes
                     </label>
                     <textarea
-                      value={proposal.notes || ''}
+                      value={proposal.notes || ""}
                       onChange={(e) =>
-                        setProposal((prev) => ({ ...prev, notes: e.target.value }))
+                        setProposal((prev) => ({
+                          ...prev,
+                          notes: e.target.value,
+                        }))
                       }
                       className="w-full border rounded px-3 py-2"
                       rows={3}
@@ -678,8 +804,8 @@ export default function AdminDashboard() {
 
             {/* Right: Preview */}
             <div className="lg:col-span-2">
-              <div className="bg-white p-6 rounded-lg shadow">
-                <h2 className="text-lg font-bold mb-4">Live Preview</h2>
+              <div className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
+                <h2 className="mb-4 text-lg font-semibold text-slate-900">Live Preview</h2>
                 <ProposalPreview
                   clientName={proposal.clientName}
                   projectTitle={proposal.projectTitle}
@@ -688,7 +814,7 @@ export default function AdminDashboard() {
                   notes={proposal.notes}
                   validUntil={proposal.validUntil}
                   showDownloadHtml={false}
-                  currency={selectedCompany?.currency || 'USD'}
+                  currency={selectedCompany?.currency || "USD"}
                   usdTotal={usdTotal}
                   companyCurrencyTotal={companyCurrencyTotal}
                   paymentLink={proposal.paymentLink}
@@ -700,16 +826,16 @@ export default function AdminDashboard() {
         )}
 
         {/* Services Tab */}
-        {activeTab === 'items' && (
+        {activeTab === "items" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left: Item Selector */}
             <div className="lg:col-span-1">
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-lg font-bold">All Services</h2>
+              <div className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-slate-900">All Services</h2>
                   <button
                     onClick={handleAddItem}
-                    className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                    className="rounded-xl bg-slate-900 px-3 py-1.5 text-sm font-semibold !text-white shadow-sm transition hover:bg-emerald-700"
                   >
                     + Add
                   </button>
@@ -720,7 +846,10 @@ export default function AdminDashboard() {
                     <ServiceListSkeleton count={3} />
                   ) : (
                     proposal.items.map((item) => (
-                      <label key={item.id} className="flex items-start gap-3 cursor-pointer p-2 rounded hover:bg-gray-50">
+                      <label
+                        key={item.id}
+                        className="flex items-start gap-3 cursor-pointer p-2 rounded hover:bg-gray-50"
+                      >
                         <input
                           type="checkbox"
                           checked={proposal.selectedItems.includes(item.id)}
@@ -728,9 +857,12 @@ export default function AdminDashboard() {
                           className="w-4 h-4 mt-1"
                         />
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm truncate">{item.name}</div>
+                          <div className="font-medium text-sm truncate">
+                            {item.name}
+                          </div>
                           <div className="text-xs text-gray-600">
-                            {item.currency || 'USD'} {item.price.toFixed(2)} × {item.quantity || 1}
+                            {item.currency || "USD"} {item.price.toFixed(2)} ×{" "}
+                            {item.quantity || 1}
                           </div>
                         </div>
                       </label>
@@ -738,11 +870,14 @@ export default function AdminDashboard() {
                   )}
                 </div>
 
-                <div className="mt-6 p-3 bg-blue-50 rounded border border-blue-200">
-                  <div className="text-sm text-gray-600">Total</div>
-                  <div className="text-2xl font-bold text-gray-900">{total.toFixed(2)}</div>
-                  <div className="text-xs text-gray-600 mt-1">
-                    {proposal.selectedItems.length} of {proposal.items.length} items selected
+                <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total</div>
+                  <div className="mt-1 text-2xl font-semibold text-slate-900">
+                    {total.toFixed(2)}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {proposal.selectedItems.length} of {proposal.items.length}{" "}
+                    items selected
                   </div>
                 </div>
               </div>
@@ -768,48 +903,74 @@ export default function AdminDashboard() {
         )}
 
         {/* Preview Tab */}
-        {activeTab === 'preview' && (
+        {activeTab === "preview" && (
           <div className="max-w-4xl mx-auto space-y-6">
             {/* Proposal Details Section */}
-            <div className="bg-white p-8 rounded-lg shadow">
-              <h2 className="text-2xl font-bold mb-6 text-gray-900">📋 Proposal Details</h2>
-              
+            <div className="rounded-3xl border border-slate-200 bg-white/90 p-8 shadow-sm">
+              <h2 className="mb-6 text-2xl font-semibold text-slate-900">
+                📋 Proposal Details
+              </h2>
+
               {/* Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
-                  <div className="text-xs text-blue-600 font-semibold uppercase tracking-wide">Client Name</div>
-                  <div className="mt-1 font-bold text-gray-900">{proposal.clientName || 'Not Set'}</div>
-                </div>
-                <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
-                  <div className="text-xs text-purple-600 font-semibold uppercase tracking-wide">Project Title</div>
-                  <div className="mt-1 font-bold text-gray-900 truncate">{proposal.projectTitle || 'Not Set'}</div>
-                </div>
-                <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
-                  <div className="text-xs text-green-600 font-semibold uppercase tracking-wide">Services</div>
-                  <div className="mt-1 font-bold text-gray-900">{proposal.selectedItems.length} Selected</div>
-                </div>
-                <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-4 rounded-lg border border-orange-200">
-                  <div className="text-xs text-orange-600 font-semibold uppercase tracking-wide">Total Amount</div>
-                  <div className="mt-1 font-bold text-gray-900">
-                    {selectedCompany?.currency || 'USD'} {companyCurrencyTotal.toFixed(2)}
+                <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-indigo-100 p-4 shadow-sm">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
+                    Client Name
                   </div>
-                  {selectedCompany?.currency && selectedCompany.currency !== 'USD' && (
-                    <div className="text-sm text-orange-500 mt-1">
-                      USD {usdTotal.toFixed(2)}
-                      {isConverting && <span className="ml-1 text-xs">⟳</span>}
-                    </div>
-                  )}
+                  <div className="mt-1 font-semibold text-slate-900">
+                    {proposal.clientName || "Not Set"}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-100 p-4 shadow-sm">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                    Project Title
+                  </div>
+                  <div className="mt-1 truncate font-semibold text-slate-900">
+                    {proposal.projectTitle || "Not Set"}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-teal-100 p-4 shadow-sm">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                    Services
+                  </div>
+                  <div className="mt-1 font-semibold text-slate-900">
+                    {proposal.selectedItems.length} Selected
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 via-white to-pink-100 p-4 shadow-sm">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-rose-700">
+                    Total Amount
+                  </div>
+                  <div className="mt-1 font-semibold text-slate-900">
+                    {selectedCompany?.currency || "USD"}{" "}
+                    {companyCurrencyTotal.toFixed(2)}
+                  </div>
+                  {selectedCompany?.currency &&
+                    selectedCompany.currency !== "USD" && (
+                      <div className="mt-1 text-sm text-rose-700/80">
+                        USD {usdTotal.toFixed(2)}
+                        {isConverting && (
+                          <span className="ml-1 text-xs">⟳</span>
+                        )}
+                      </div>
+                    )}
                 </div>
               </div>
 
               {/* Company Info */}
               <div className="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <div className="text-sm font-semibold text-gray-900 mb-2">🏢 Company Information</div>
+                <div className="text-sm font-semibold text-gray-900 mb-2">
+                  🏢 Company Information
+                </div>
                 <div className="text-sm text-gray-700">
-                  <p><strong>{selectedCompany?.businessName || 'Company not selected'}</strong></p>
+                  <p>
+                    <strong>
+                      {selectedCompany?.businessName || "Company not selected"}
+                    </strong>
+                  </p>
                   {selectedCompany?.website && (
                     <p>
-                      🌐{' '}
+                      🌐{" "}
                       <a
                         href={selectedCompany.website}
                         target="_blank"
@@ -824,7 +985,9 @@ export default function AdminDashboard() {
                     <>
                       <p>📧 {selectedCompany.email}</p>
                       <p>📱 {selectedCompany.mobileNumber}</p>
-                      {selectedCompany.address && <p>📍 {selectedCompany.address}</p>}
+                      {selectedCompany.address && (
+                        <p>📍 {selectedCompany.address}</p>
+                      )}
                     </>
                   )}
                 </div>
@@ -832,34 +995,61 @@ export default function AdminDashboard() {
 
               {/* Services Table */}
               <div className="mb-8">
-                <div className="text-sm font-semibold text-gray-900 mb-3">🛍️ Services Included</div>
+                <div className="text-sm font-semibold text-gray-900 mb-3">
+                  🛍️ Services Included
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b-2 border-gray-300 bg-gray-50">
-                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Service</th>
-                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Description</th>
-                        <th className="text-center py-3 px-4 font-semibold text-gray-700">Qty</th>
-                        <th className="text-right py-3 px-4 font-semibold text-gray-700">Price</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                          Service
+                        </th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                          Description
+                        </th>
+                        <th className="text-center py-3 px-4 font-semibold text-gray-700">
+                          Qty
+                        </th>
+                        <th className="text-right py-3 px-4 font-semibold text-gray-700">
+                          Price
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {proposal.items.filter(i => proposal.selectedItems.includes(i.id)).length > 0 ? (
+                      {proposal.items.filter((i) =>
+                        proposal.selectedItems.includes(i.id),
+                      ).length > 0 ? (
                         proposal.items
-                          .filter((item) => proposal.selectedItems.includes(item.id))
+                          .filter((item) =>
+                            proposal.selectedItems.includes(item.id),
+                          )
                           .map((item) => (
-                            <tr key={item.id} className="border-b border-gray-200 hover:bg-gray-50">
-                              <td className="py-3 px-4 font-medium text-gray-900">{item.name}</td>
-                              <td className="py-3 px-4 text-gray-600">{item.description}</td>
-                              <td className="py-3 px-4 text-center text-gray-900">{item.quantity || 1}</td>
+                            <tr
+                              key={item.id}
+                              className="border-b border-gray-200 hover:bg-gray-50"
+                            >
+                              <td className="py-3 px-4 font-medium text-gray-900">
+                                {item.name}
+                              </td>
+                              <td className="py-3 px-4 text-gray-600">
+                                {item.description}
+                              </td>
+                              <td className="py-3 px-4 text-center text-gray-900">
+                                {item.quantity || 1}
+                              </td>
                               <td className="py-3 px-4 text-right font-semibold text-gray-900">
-                                {selectedCompany?.currency || 'USD'} {(item.price * (item.quantity || 1)).toFixed(2)}
+                                {selectedCompany?.currency || "USD"}{" "}
+                                {(item.price * (item.quantity || 1)).toFixed(2)}
                               </td>
                             </tr>
                           ))
                       ) : (
                         <tr>
-                          <td colSpan={4} className="py-4 text-center text-gray-500">
+                          <td
+                            colSpan={4}
+                            className="py-4 text-center text-gray-500"
+                          >
                             No services selected
                           </td>
                         </tr>
@@ -869,29 +1059,122 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
+              <div className="mb-8 rounded-lg border border-gray-200 bg-slate-50 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="text-sm font-semibold text-gray-900">
+                    Attachments
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddAttachment}
+                    disabled={
+                      (proposal.attachments?.length || 0) >=
+                      MAX_PROPOSAL_ATTACHMENTS
+                    }
+                    className={`rounded px-3 py-1 text-sm font-medium text-white ${
+                      (proposal.attachments?.length || 0) >=
+                      MAX_PROPOSAL_ATTACHMENTS
+                        ? "cursor-not-allowed bg-gray-300"
+                        : "bg-blue-600 hover:bg-blue-700"
+                    }`}
+                  >
+                    + Add
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {normalizeProposalAttachments(proposal.attachments).map(
+                    (attachment, index) => (
+                      <div
+                        key={attachment.id}
+                        className="rounded border border-slate-200 bg-white p-3"
+                      >
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            Attachment {index + 1}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleRemoveAttachment(attachment.id)
+                            }
+                            className="text-xs font-medium text-red-600 hover:text-red-700"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <input
+                            type="text"
+                            value={attachment.label}
+                            onChange={(e) =>
+                              handleAttachmentChange(
+                                attachment.id,
+                                "label",
+                                e.target.value,
+                              )
+                            }
+                            className="w-full rounded border px-3 py-2"
+                            placeholder="Text"
+                          />
+                          <input
+                            type="url"
+                            value={attachment.url}
+                            onChange={(e) =>
+                              handleAttachmentChange(
+                                attachment.id,
+                                "url",
+                                e.target.value,
+                              )
+                            }
+                            className="w-full rounded border px-3 py-2"
+                            placeholder="Link (https://example.com/resource)"
+                          />
+                        </div>
+                      </div>
+                    ),
+                  )}
+                </div>
+              </div>
+
               {/* Total Amount */}
               <div className="flex justify-end mb-8">
-                <div className="bg-gradient-to-r from-gray-900 to-gray-800 text-white p-6 rounded-lg">
-                  <div className="flex gap-12">
+              <div className="rounded-2xl border border-slate-200 bg-slate-950 px-6 py-6 text-white shadow-sm">
+                <div className="flex gap-12">
                     <div>
-                      <div className="text-xs text-gray-300 uppercase tracking-wide">Subtotal</div>
-                      <div className="text-2xl font-bold">{selectedCompany?.currency || 'USD'} {companyCurrencyTotal.toFixed(2)}</div>
-                      {selectedCompany?.currency && selectedCompany.currency !== 'USD' && (
-                        <div className="text-sm text-gray-400 mt-1">
-                          USD {usdTotal.toFixed(2)}
-                          {isConverting && <span className="ml-1 text-xs">⟳</span>}
-                        </div>
-                      )}
+                      <div className="text-xs uppercase tracking-wide text-slate-400">
+                        Subtotal
+                      </div>
+                      <div className="text-2xl font-semibold">
+                        {selectedCompany?.currency || "USD"}{" "}
+                        {companyCurrencyTotal.toFixed(2)}
+                      </div>
+                      {selectedCompany?.currency &&
+                        selectedCompany.currency !== "USD" && (
+                          <div className="mt-1 text-sm text-slate-300">
+                            USD {usdTotal.toFixed(2)}
+                            {isConverting && (
+                              <span className="ml-1 text-xs">⟳</span>
+                            )}
+                          </div>
+                        )}
                     </div>
                     <div>
-                      <div className="text-xs text-gray-300 uppercase tracking-wide">Total</div>
-                      <div className="text-3xl font-bold">{selectedCompany?.currency || 'USD'} {companyCurrencyTotal.toFixed(2)}</div>
-                      {selectedCompany?.currency && selectedCompany.currency !== 'USD' && (
-                        <div className="text-sm text-gray-400 mt-1">
-                          USD {usdTotal.toFixed(2)}
-                          {isConverting && <span className="ml-1 text-xs">⟳</span>}
-                        </div>
-                      )}
+                      <div className="text-xs uppercase tracking-wide text-slate-400">
+                        Total
+                      </div>
+                      <div className="text-3xl font-semibold">
+                        {selectedCompany?.currency || "USD"}{" "}
+                        {companyCurrencyTotal.toFixed(2)}
+                      </div>
+                      {selectedCompany?.currency &&
+                        selectedCompany.currency !== "USD" && (
+                          <div className="mt-1 text-sm text-slate-300">
+                            USD {usdTotal.toFixed(2)}
+                            {isConverting && (
+                              <span className="ml-1 text-xs">⟳</span>
+                            )}
+                          </div>
+                        )}
                     </div>
                   </div>
                 </div>
@@ -900,15 +1183,21 @@ export default function AdminDashboard() {
               {/* Notes if any */}
               {proposal.notes && (
                 <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <div className="text-sm font-semibold text-gray-900 mb-2">📝 Additional Notes</div>
-                  <div className="text-sm text-gray-700 whitespace-pre-wrap">{proposal.notes}</div>
+                  <div className="text-sm font-semibold text-gray-900 mb-2">
+                    📝 Additional Notes
+                  </div>
+                  <div className="text-sm text-gray-700 whitespace-pre-wrap">
+                    {proposal.notes}
+                  </div>
                 </div>
               )}
             </div>
 
             {/* Customer Email & Send Section */}
-            <div className="bg-white p-8 rounded-lg shadow">
-              <h2 className="text-2xl font-bold mb-6 text-gray-900">📧 Send Proposal to Customer</h2>
+            <div className="rounded-3xl border border-slate-200 bg-white/90 p-8 shadow-sm">
+              <h2 className="mb-6 text-2xl font-semibold text-slate-900">
+                📧 Send Proposal to Customer
+              </h2>
 
               <div className="space-y-4">
                 {/* Email Input */}
@@ -921,36 +1210,47 @@ export default function AdminDashboard() {
                     value={customerEmail}
                     onChange={(e) => setCustomerEmail(e.target.value)}
                     placeholder="customer@example.com"
-                    className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
                     disabled={isSendingEmail}
                   />
-                  <p className="mt-1 text-xs text-gray-600">The proposal PDF will be sent to this email address</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    The proposal PDF will be sent to this email address
+                  </p>
                 </div>
 
                 {/* Send Button */}
                 <button
                   onClick={handleSendProposalEmail}
-                  disabled={isSendingEmail || !customerEmail || !proposal.clientName || proposal.selectedItems.length === 0}
-                  className={`w-full px-6 py-4 font-semibold rounded-lg transition flex items-center justify-center gap-2 ${
-                    isSendingEmail || !customerEmail || !proposal.clientName || proposal.selectedItems.length === 0
-                      ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
-                      : 'bg-green-600 text-white hover:bg-green-700'
+                  disabled={
+                    isSendingEmail ||
+                    !customerEmail ||
+                    !proposal.clientName ||
+                    proposal.selectedItems.length === 0
+                  }
+                  className={`flex w-full items-center justify-center gap-2 rounded-xl px-6 py-4 font-semibold transition ${
+                    isSendingEmail ||
+                    !customerEmail ||
+                    !proposal.clientName ||
+                    proposal.selectedItems.length === 0
+                      ? "cursor-not-allowed bg-slate-200 text-slate-500"
+                      : "bg-emerald-600 text-white hover:bg-emerald-700"
                   }`}
                 >
                   {isSendingEmail ? (
                     <>
-                      <span className="animate-spin">⏳</span> Sending Proposal...
+                      <span className="animate-spin">⏳</span> Sending
+                      Proposal...
                     </>
                   ) : (
-                    <>
-                      📧 Send Proposal via Email
-                    </>
+                    <>📧 Send Proposal via Email</>
                   )}
                 </button>
 
                 {/* Status Message */}
                 {saveMessage && (
-                  <div className={`p-4 rounded-lg border-l-4 ${getSaveMessageTone()}`}>
+                  <div
+                    className={`p-4 rounded-lg border-l-4 ${getSaveMessageTone()}`}
+                  >
                     <p className="font-semibold text-sm">{saveMessage}</p>
                   </div>
                 )}

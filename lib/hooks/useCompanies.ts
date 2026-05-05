@@ -6,9 +6,25 @@ let companiesCache: CompanyBranding[] | null = null;
 let companiesCacheAt = 0;
 let companiesInFlight: Promise<CompanyBranding[]> | null = null;
 
+async function readJsonResponse<T>(response: Response): Promise<T> {
+  const contentType = response.headers.get('content-type') || '';
+
+  if (contentType.includes('application/json')) {
+    return response.json() as Promise<T>;
+  }
+
+  const text = await response.text();
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(text || 'Unexpected non-JSON response');
+  }
+}
+
 async function requestCompanies(): Promise<CompanyBranding[]> {
   const response = await fetch('/api/companies');
-  const result = await response.json();
+  const result = await readJsonResponse<{ data?: CompanyBranding[]; error?: string }>(response);
 
   if (!response.ok) {
     throw new Error(result.error || 'Failed to fetch companies');
@@ -73,7 +89,7 @@ export function useCompanies() {
         body: JSON.stringify(company),
       });
       
-      const result = await response.json();
+      const result = await readJsonResponse<{ data?: CompanyBranding; error?: string }>(response);
       
       if (!response.ok) {
         throw new Error(result.error || 'Failed to create company');
@@ -105,7 +121,7 @@ export function useCompanies() {
         body: JSON.stringify(company),
       });
       
-      const result = await response.json();
+      const result = await readJsonResponse<{ data?: CompanyBranding; error?: string }>(response);
       
       if (!response.ok) {
         throw new Error(result.error || 'Failed to update company');
@@ -135,7 +151,7 @@ export function useCompanies() {
         method: 'DELETE',
       });
       
-      const result = await response.json();
+      const result = await readJsonResponse<{ error?: string; message?: string }>(response);
       
       if (!response.ok) {
         throw new Error(result.error || 'Failed to delete company');
