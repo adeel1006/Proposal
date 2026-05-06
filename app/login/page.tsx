@@ -48,7 +48,7 @@ export default function LoginPage() {
               type="text"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-100"
               required
             />
           </div>
@@ -58,7 +58,7 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-100"
               required
             />
           </div>
@@ -67,7 +67,7 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            className="w-full rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-70"
+            className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold !text-white transition hover:bg-slate-700 disabled:opacity-70"
             disabled={isSubmitting}
           >
             {isSubmitting ? 'Signing in…' : 'Sign In'}

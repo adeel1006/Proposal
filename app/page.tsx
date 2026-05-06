@@ -13,7 +13,7 @@ export default function Home() {
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <a
               href="/admin/proposals"
-              className="inline-flex items-center justify-center rounded-full bg-slate-900 px-7 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+              className="inline-flex items-center justify-center rounded-full bg-slate-900 px-7 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700"
             >
               Open Proposal Dashboard
             </a>
