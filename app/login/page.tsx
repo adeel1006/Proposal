@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
+  const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -24,7 +26,7 @@ export default function LoginPage() {
     setIsSubmitting(false);
 
     if (response.ok) {
-      window.location.assign('/admin/proposals');
+      router.replace('/admin/proposals');
       return;
     }
 
@@ -36,8 +38,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-slate-50 py-16 px-4">
       <div className="mx-auto w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 shadow-lg">
         <div className="mb-6 text-center">
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-indigo-600">Admin Login</p>
-          <h1 className="mt-4 text-3xl font-semibold text-slate-900">Secure admin access</h1>
+          <h1 className="mt-4 text-3xl font-semibold text-slate-900">Admin Login</h1>
           <p className="mt-2 text-sm text-slate-500">Use your admin credentials to access proposal management.</p>
         </div>
 

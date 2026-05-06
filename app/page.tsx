@@ -20,7 +20,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="mt-16 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <section className="mt-16 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <a
             href="/admin/companies"
             className="rounded-3xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-lg"
@@ -42,6 +42,16 @@ export default function Home() {
             </p>
           </a>
           <a
+            href="/admin/customers"
+            className="rounded-3xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-emerald-300 hover:shadow-lg"
+          >
+            <div className="text-3xl">👥</div>
+            <h2 className="mt-4 text-lg font-semibold text-slate-900">Customers</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-700">
+              Store customer contact details, business websites, required services, and proposal history.
+            </p>
+          </a>
+          <a
             href="/admin/proposals"
             className="rounded-3xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-sky-300 hover:shadow-lg"
           >
@@ -49,6 +59,16 @@ export default function Home() {
             <h2 className="mt-4 text-lg font-semibold text-slate-900">Send Proposals</h2>
             <p className="mt-2 text-sm leading-6 text-slate-700">
               Create, edit, and export proposal drafts with live preview.
+            </p>
+          </a>
+          <a
+            href="/admin/ai-proposal"
+            className="rounded-3xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-cyan-300 hover:shadow-lg"
+          >
+            <div className="text-3xl">🤖</div>
+            <h2 className="mt-4 text-lg font-semibold text-slate-900">AI Proposal</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-700">
+              Generate draft proposals from customer data, website context, and selected services.
             </p>
           </a>
 

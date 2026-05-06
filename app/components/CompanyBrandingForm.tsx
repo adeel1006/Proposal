@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CompanyBranding, generateCompanyId } from '@/app/lib/proposalTypes';
+import { CompanyBranding } from '@/app/lib/proposalTypes';
 
 interface CompanyBrandingFormProps {
   company?: CompanyBranding;
@@ -12,7 +12,7 @@ interface CompanyBrandingFormProps {
 export default function CompanyBrandingForm({ company, onSave, onCancel }: CompanyBrandingFormProps) {
   const [formData, setFormData] = useState<CompanyBranding>(
     company || {
-      id: generateCompanyId(),
+      id: '',
       businessName: '',
       email: '',
       mobileNumber: '',
@@ -91,7 +91,7 @@ export default function CompanyBrandingForm({ company, onSave, onCancel }: Compa
           </label>
           <input
             type="text"
-            value={formData.businessName}
+            value={formData.businessName ?? ''}
             onChange={(e) => handleChange('businessName', e.target.value)}
             className="w-full border rounded px-3 py-2"
             placeholder="e.g., Tech Solutions Inc."
@@ -104,7 +104,7 @@ export default function CompanyBrandingForm({ company, onSave, onCancel }: Compa
           <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
           <input
             type="email"
-            value={formData.email}
+            value={formData.email ?? ''}
             onChange={(e) => handleChange('email', e.target.value)}
             className="w-full border rounded px-3 py-2"
             placeholder="company@example.com"
@@ -119,7 +119,7 @@ export default function CompanyBrandingForm({ company, onSave, onCancel }: Compa
           </label>
           <input
             type="tel"
-            value={formData.mobileNumber}
+            value={formData.mobileNumber ?? ''}
             onChange={(e) => handleChange('mobileNumber', e.target.value)}
             className="w-full border rounded px-3 py-2"
             placeholder="+1 (555) 123-4567"
@@ -143,7 +143,7 @@ export default function CompanyBrandingForm({ company, onSave, onCancel }: Compa
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Currency *</label>
           <select
-            value={formData.currency}
+            value={formData.currency ?? 'USD'}
             onChange={(e) => handleChange('currency', e.target.value)}
             className="w-full border rounded px-3 py-2"
             required
@@ -161,7 +161,7 @@ export default function CompanyBrandingForm({ company, onSave, onCancel }: Compa
         <div className="md:col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-1">Address *</label>
           <textarea
-            value={formData.address}
+            value={formData.address ?? ''}
             onChange={(e) => handleChange('address', e.target.value)}
             className="w-full border rounded px-3 py-2"
             placeholder="123 Business St, City, State 12345"

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendProposalEmail } from '@/lib/emailService';
+import { formatReadableId, slugifyIdSegment } from '@/lib/readableIds';
 import {
   Proposal,
   ProposalItem,
@@ -93,17 +94,34 @@ export async function POST(request: NextRequest) {
 
     try {
       const supabase = getSupabaseAdminClient();
+      let proposalId = proposal.id?.trim() || '';
+      if (!proposalId) {
+        const label = proposal.clientName || proposal.projectTitle || 'proposal';
+        const { count } = await supabase
+          .from('proposals')
+          .select('id', { count: 'exact', head: true })
+          .ilike('id', `prop-${slugifyIdSegment(label)}-%`);
+        proposalId = formatReadableId('prop', label, (count || 0) + 1);
+      }
       await supabase
         .from('proposals')
         .upsert(
           {
-            id: proposal.id,
+            id: proposalId,
             company_id: proposal.companyId || null,
+            customer_id: proposal.customerId || null,
             client_name: proposal.clientName,
             client_email: proposal.clientEmail || customerEmail,
+            client_phone_number: proposal.clientPhoneNumber || null,
             project_title: proposal.projectTitle,
+            project_description: proposal.projectDescription || null,
+            selected_items: proposal.selectedItems || [],
             attachments: normalizedProposal.attachments,
             payment_link: resolvedPaymentLink || null,
+            notes: proposal.notes || null,
+            proposal_date: proposal.proposalDate || null,
+            valid_until: proposal.validUntil || null,
+            terms: proposal.terms || {},
             status: 'submitted',
             pdf_base64: pdfBase64,
             submitted_at: new Date().toISOString(),

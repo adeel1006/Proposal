@@ -64,10 +64,28 @@ export function useCompanies() {
       }
 
       const data = await companiesInFlight;
-      companiesCache = data;
+      companiesCache = data.map((company) => ({
+        ...company,
+        businessName: company.businessName || "",
+        email: company.email || "",
+        mobileNumber: company.mobileNumber || "",
+        whatsapp: company.whatsapp || "",
+        address: company.address || "",
+        registrationNumber: company.registrationNumber || "",
+        website: company.website || "",
+        currency: company.currency || "USD",
+        replyToEmail: company.replyToEmail || "",
+        instagram: company.instagram || "",
+        linkedin: company.linkedin || "",
+        twitter: company.twitter || "",
+        facebook: company.facebook || "",
+        youtube: company.youtube || "",
+        pinterest: company.pinterest || "",
+        logo: company.logo || "",
+      }));
       companiesCacheAt = Date.now();
-      setCompanies(data);
-      return data;
+      setCompanies(companiesCache);
+      return companiesCache;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       setError(message);
@@ -94,15 +112,21 @@ export function useCompanies() {
       if (!response.ok) {
         throw new Error(result.error || 'Failed to create company');
       }
+
+      if (!result.data) {
+        throw new Error('Company API returned no company data');
+      }
+
+      const savedCompany = result.data;
       
       setCompanies((prev) => {
         const base = companiesCache || prev;
-        const updated = [result.data, ...base];
+        const updated = [savedCompany, ...base];
         companiesCache = updated;
         companiesCacheAt = Date.now();
         return updated;
       });
-      return result.data;
+      return savedCompany;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       setError(message);
@@ -126,15 +150,21 @@ export function useCompanies() {
       if (!response.ok) {
         throw new Error(result.error || 'Failed to update company');
       }
+
+      if (!result.data) {
+        throw new Error('Company API returned no company data');
+      }
+
+      const savedCompany = result.data;
       
       setCompanies((prev) => {
         const base = companiesCache || prev;
-        const updated = base.map((c) => (c.id === company.id ? result.data : c));
+        const updated = base.map((c) => (c.id === company.id ? savedCompany : c));
         companiesCache = updated;
         companiesCacheAt = Date.now();
         return updated;
       });
-      return result.data;
+      return savedCompany;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       setError(message);

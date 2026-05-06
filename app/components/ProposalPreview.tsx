@@ -65,7 +65,7 @@ export default function ProposalPreview({
   return (
     <div className="space-y-4">
       {/* Action Buttons */}
-      <div className="flex flex-wrap gap-2 no-print">
+      {/* <div className="flex flex-wrap gap-2 no-print">
         <button
           onClick={handlePrintPDF}
           className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold !text-white shadow-sm transition hover:bg-slate-800"
@@ -80,7 +80,7 @@ export default function ProposalPreview({
             ⬇️ Download HTML
           </button>
         )}
-      </div>
+      </div> */}
 
       {/* Proposal Content */}
       <div

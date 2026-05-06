@@ -42,8 +42,10 @@ export async function POST(request: NextRequest) {
     // Reconstruct the proposal object from database
     const proposal: Proposal = {
       id: proposalData.id,
+      customerId: proposalData.customer_id || '',
       clientName: proposalData.client_name,
       clientEmail: proposalData.client_email || '',
+      clientPhoneNumber: proposalData.client_phone_number || '',
       projectTitle: proposalData.project_title,
       projectDescription: proposalData.project_description || '',
       items: proposalData.items || [],

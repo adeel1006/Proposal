@@ -5,6 +5,7 @@ import {
   normalizeProposalAttachments,
   validateProposalAttachments,
 } from "@/app/lib/proposalTypes";
+import { formatReadableId, slugifyIdSegment } from "@/lib/readableIds";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 
 type SaveProposalPayload = {
@@ -28,6 +29,7 @@ export async function GET() {
     const baseListColumns = [
       "id",
       "company_id",
+      "customer_id",
       "client_name",
       "client_email",
       "client_phone_number",
@@ -44,9 +46,16 @@ export async function GET() {
       "company",
     ];
 
-    const columnsWithoutAttachments = baseListColumns.filter((column) => column !== "attachments");
+    const columnsWithoutCustomerId = baseListColumns.filter((column) => column !== "customer_id");
+    const columnsWithoutCustomerIdAndAttachments = columnsWithoutCustomerId.filter(
+      (column) => column !== "attachments",
+    );
     const columnsWithPaymentLink = [...baseListColumns, "payment_link"];
-    const columnsWithPaymentLinkWithoutAttachments = [...columnsWithoutAttachments, "payment_link"];
+    const columnsWithPaymentLinkWithoutCustomerId = [...columnsWithoutCustomerId, "payment_link"];
+    const columnsWithPaymentLinkWithoutCustomerIdAndAttachments = [
+      ...columnsWithoutCustomerIdAndAttachments,
+      "payment_link",
+    ];
     const listColumnsWithResponseAt = [...columnsWithPaymentLink, "response_at"].join(", ");
 
     let queryResult = await supabase
@@ -61,17 +70,24 @@ export async function GET() {
         .order("submitted_at", { ascending: false });
     }
 
+    if (queryResult.error?.message?.includes("customer_id")) {
+      queryResult = await supabase
+        .from("proposals")
+        .select(columnsWithPaymentLinkWithoutCustomerId.join(", "))
+        .order("submitted_at", { ascending: false });
+    }
+
     if (queryResult.error?.message?.includes("payment_link")) {
       queryResult = await supabase
         .from("proposals")
-        .select(columnsWithoutAttachments.join(", "))
+        .select(columnsWithoutCustomerIdAndAttachments.join(", "))
         .order("submitted_at", { ascending: false });
     }
 
     if (queryResult.error?.message?.includes("attachments")) {
       queryResult = await supabase
         .from("proposals")
-        .select(columnsWithPaymentLinkWithoutAttachments.join(", "))
+        .select(columnsWithPaymentLinkWithoutCustomerIdAndAttachments.join(", "))
         .order("submitted_at", { ascending: false });
     }
 
@@ -118,10 +134,20 @@ export async function POST(request: NextRequest) {
       typeof total === "number" && Number.isFinite(total)
         ? total
         : computeProposalTotal(proposal);
+    let proposalId = proposal.id?.trim() || "";
+    if (!proposalId) {
+      const label = proposal.clientName || proposal.projectTitle || "proposal";
+      const { count } = await supabase
+        .from("proposals")
+        .select("id", { count: "exact", head: true })
+        .ilike("id", `prop-${slugifyIdSegment(label)}-%`);
+      proposalId = formatReadableId("prop", label, (count || 0) + 1);
+    }
 
     const payload: Record<string, unknown> = {
-      id: proposal.id,
+      id: proposalId,
       company_id: proposal.companyId || null,
+      customer_id: proposal.customerId || null,
       client_name: proposal.clientName,
       client_email: proposal.clientEmail || customerEmail || null,
       client_phone_number: proposal.clientPhoneNumber || null,
@@ -146,6 +172,15 @@ export async function POST(request: NextRequest) {
       .upsert(payload, { onConflict: "id" })
       .select()
       .single();
+
+    if (queryResult.error?.message?.includes("customer_id")) {
+      delete payload.customer_id;
+      queryResult = await supabase
+        .from("proposals")
+        .upsert(payload, { onConflict: "id" })
+        .select()
+        .single();
+    }
 
     if (queryResult.error?.message?.includes("attachments")) {
       delete payload.attachments;

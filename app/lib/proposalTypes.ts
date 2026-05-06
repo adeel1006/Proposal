@@ -29,6 +29,19 @@ export interface CompanyBranding {
    */
 }
 
+export interface Customer {
+  id: string;
+  companyId: string;
+  name: string;
+  email?: string;
+  phoneNumber?: string;
+  businessWebsite?: string;
+  requiredService?: string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ProposalItem {
   id: string;
   name: string;
@@ -54,6 +67,7 @@ export interface ProposalTerms {
 export interface Proposal {
   id: string;
   companyId: string; // ID of selected company branding
+  customerId?: string;
   clientName: string;
   clientEmail?: string;
   clientPhoneNumber?: string;
@@ -306,5 +320,9 @@ export const generateProposalId = (): string => {
 
 export const generateCompanyId = (): string => {
   return `COMP-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+};
+
+export const generateCustomerId = (): string => {
+  return `CUST-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 };
 

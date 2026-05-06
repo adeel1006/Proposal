@@ -12,6 +12,13 @@
   --primary-hover: #1d4ed8;
   --font-heading: "Nunito", sans-serif;
   --font-body: "Inter", sans-serif;
+  --field-bg: #ffffff;
+  --field-border: #cbd5e1;
+  --field-border-hover: #94a3b8;
+  --field-border-focus: #7a7a7a7e;
+  --field-ring: rgba(247, 247, 247, 0.39);
+  --field-placeholder: #64748b;
+  --field-shadow: 0 1px 2px rgba(129, 129, 129, 0.781);
 }
 
 @theme inline {
@@ -59,8 +66,59 @@ select {
 }
 
 ::placeholder {
-  color: #64748b;
+  color: var(--field-placeholder);
   opacity: 1;
+}
+
+input:where(:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"])),
+select,
+textarea {
+  width: 100%;
+  border-radius: 0.85rem;
+  border: 1px solid var(--field-border);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  color: var(--foreground);
+  padding: 0.66rem 0.85rem;
+  line-height: 1.4;
+  box-shadow: var(--field-shadow);
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  appearance: none;
+}
+
+select {
+  background-image: linear-gradient(45deg, transparent 50%, #64748b 50%),
+    linear-gradient(135deg, #64748b 50%, transparent 50%);
+  background-position: calc(100% - 18px) calc(50% - 3px), calc(100% - 13px) calc(50% - 3px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 2.5rem;
+}
+
+input:where(:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"])):hover,
+select:hover,
+textarea:hover {
+  border-color: var(--field-border-hover);
+}
+
+input:where(:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"])):focus,
+select:focus,
+textarea:focus {
+  border-color: var(--field-border-focus);
+  box-shadow: 0 0 0 4px var(--field-ring);
+  outline: none;
+}
+
+input:where(:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"])):disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+  background: #f1f5f9;
+}
+
+textarea {
+  min-height: 104px;
+  resize: vertical;
 }
 
 .text-gray-600,

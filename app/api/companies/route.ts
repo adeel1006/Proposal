@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { formatReadableId, slugifyIdSegment } from "@/lib/readableIds";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 
 type CreateCompanyPayload = {
@@ -82,22 +83,22 @@ export async function GET() {
     const rows = (data ?? []) as unknown as CompanyRow[];
     const transformed = rows.map((company) => ({
       id: company.id,
-      businessName: company.business_name,
-      email: company.email,
-      mobileNumber: company.mobile_number,
-      whatsapp: company.whatsapp,
-      address: company.address,
-      registrationNumber: company.registration_number,
-      website: company.website,
+      businessName: company.business_name || "",
+      email: company.email || "",
+      mobileNumber: company.mobile_number || "",
+      whatsapp: company.whatsapp || "",
+      address: company.address || "",
+      registrationNumber: company.registration_number || "",
+      website: company.website || "",
       currency: company.currency || "USD",
-      replyToEmail: company.reply_to_email,
-      instagram: company.instagram,
-      linkedin: company.linkedin,
-      twitter: company.twitter,
-      facebook: company.facebook,
-      youtube: company.youtube,
-      pinterest: company.pinterest,
-      logo: company.logo,
+      replyToEmail: company.reply_to_email || "",
+      instagram: company.instagram || "",
+      linkedin: company.linkedin || "",
+      twitter: company.twitter || "",
+      facebook: company.facebook || "",
+      youtube: company.youtube || "",
+      pinterest: company.pinterest || "",
+      logo: company.logo || "",
       createdAt: company.created_at,
       updatedAt: company.updated_at,
     }));
@@ -149,7 +150,18 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdminClient();
-    const companyId = id || `company-${Date.now()}`;
+    let companyId = id?.trim() || "";
+    if (!companyId) {
+      const { count } = await supabase
+        .from("companies")
+        .select("id", { count: "exact", head: true })
+        .ilike("id", `comp-${slugifyIdSegment(businessName)}-%`);
+      companyId = formatReadableId(
+        "comp",
+        businessName,
+        (count || 0) + 1,
+      );
+    }
 
     const { data, error } = await supabase
       .from("companies")
@@ -181,22 +193,22 @@ export async function POST(request: NextRequest) {
 
     const transformed = {
       id: data.id,
-      businessName: data.business_name,
-      email: data.email,
-      mobileNumber: data.mobile_number,
-      whatsapp: data.whatsapp,
-      address: data.address,
-      registrationNumber: data.registration_number,
-      website: data.website,
-      currency: data.currency,
-      replyToEmail: data.reply_to_email,
-      instagram: data.instagram,
-      linkedin: data.linkedin,
-      twitter: data.twitter,
-      facebook: data.facebook,
-      youtube: data.youtube,
-      pinterest: data.pinterest,
-      logo: data.logo,
+      businessName: data.business_name || "",
+      email: data.email || "",
+      mobileNumber: data.mobile_number || "",
+      whatsapp: data.whatsapp || "",
+      address: data.address || "",
+      registrationNumber: data.registration_number || "",
+      website: data.website || "",
+      currency: data.currency || "USD",
+      replyToEmail: data.reply_to_email || "",
+      instagram: data.instagram || "",
+      linkedin: data.linkedin || "",
+      twitter: data.twitter || "",
+      facebook: data.facebook || "",
+      youtube: data.youtube || "",
+      pinterest: data.pinterest || "",
+      logo: data.logo || "",
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     };
@@ -272,22 +284,22 @@ export async function PUT(request: NextRequest) {
 
     const transformed = {
       id: data.id,
-      businessName: data.business_name,
-      email: data.email,
-      mobileNumber: data.mobile_number,
-      whatsapp: data.whatsapp,
-      address: data.address,
-      registrationNumber: data.registration_number,
-      website: data.website,
-      currency: data.currency,
-      replyToEmail: data.reply_to_email,
-      instagram: data.instagram,
-      linkedin: data.linkedin,
-      twitter: data.twitter,
-      facebook: data.facebook,
-      youtube: data.youtube,
-      pinterest: data.pinterest,
-      logo: data.logo,
+      businessName: data.business_name || "",
+      email: data.email || "",
+      mobileNumber: data.mobile_number || "",
+      whatsapp: data.whatsapp || "",
+      address: data.address || "",
+      registrationNumber: data.registration_number || "",
+      website: data.website || "",
+      currency: data.currency || "USD",
+      replyToEmail: data.reply_to_email || "",
+      instagram: data.instagram || "",
+      linkedin: data.linkedin || "",
+      twitter: data.twitter || "",
+      facebook: data.facebook || "",
+      youtube: data.youtube || "",
+      pinterest: data.pinterest || "",
+      logo: data.logo || "",
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     };

@@ -207,7 +207,7 @@ export default function CompaniesPage() {
 
                     {company.website && (
                       <div className="flex items-start gap-2">
-                        <span className="font-medium min-w-fit">Website:</span>
+                        <span className="font-medium min-w-fit">🌐</span>
                         <a
                           href={company.website}
                           target="_blank"

@@ -12,11 +12,11 @@ import { generateProposalHTML } from "@/lib/clientPdfService";
 import {
   Proposal,
   ProposalAttachment,
+  Customer,
   ProposalItem,
   DEFAULT_ITEMS,
   DEFAULT_TERMS,
   MAX_PROPOSAL_ATTACHMENTS,
-  generateProposalId,
   getSelectedItemsTotal,
   getSelectedItemsTotalUSD,
   getSelectedItemsTotalInCurrency,
@@ -24,6 +24,7 @@ import {
   validateProposalAttachments,
 } from "@/app/lib/proposalTypes";
 import { useCompanies } from "@/lib/hooks/useCompanies";
+import { useCustomers } from "@/lib/hooks/useCustomers";
 import { useServices } from "@/lib/hooks/useServices";
 import { useDraftProposals } from "@/lib/hooks/useDraftProposals";
 
@@ -44,16 +45,8 @@ function createAttachment(): ProposalAttachment {
 }
 
 function ensureProposalId(proposal: Proposal): Proposal {
-  if (proposal.id && proposal.id.trim() !== "") {
-    return {
-      ...proposal,
-      attachments: normalizeProposalAttachments(proposal.attachments),
-    };
-  }
-
   return {
     ...proposal,
-    id: generateProposalId(),
     attachments: normalizeProposalAttachments(proposal.attachments),
   };
 }
@@ -63,8 +56,9 @@ function createFreshProposal(
   items: ProposalItem[] = DEFAULT_ITEMS,
 ): Proposal {
   return {
-    id: generateProposalId(),
+    id: "",
     companyId,
+    customerId: "",
     clientName: "",
     projectTitle: "",
     selectedItems: [],
@@ -80,11 +74,19 @@ export default function AdminDashboard() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
   const { services: companyServices, loading: servicesLoading } =
     useServices(selectedCompanyId);
+  const {
+    customers,
+    loading: customersLoading,
+    createCustomer,
+  } = useCustomers(selectedCompanyId || undefined, {
+    autoFetch: Boolean(selectedCompanyId),
+  });
   const { saveDraft } = useDraftProposals({ autoFetch: false });
 
   const [proposal, setProposal] = useState<Proposal>({
     id: "",
     companyId: "",
+    customerId: "",
     clientName: "",
     projectTitle: "",
     selectedItems: [],
@@ -100,9 +102,37 @@ export default function AdminDashboard() {
   const [saveMessage, setSaveMessage] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
   const [customerEmail, setCustomerEmail] = useState("");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
+  const [showQuickCustomerForm, setShowQuickCustomerForm] = useState(false);
+  const [isSavingCustomer, setIsSavingCustomer] = useState(false);
+  const [quickCustomer, setQuickCustomer] = useState({
+    name: "",
+    email: "",
+    phoneNumber: "",
+    businessWebsite: "",
+    requiredService: "",
+  });
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const selectedCompany =
     companies.find((c) => c.id === selectedCompanyId) || null;
+  const selectedCustomer =
+    customers.find((customer) => customer.id === proposal.customerId) || null;
+  const filteredCustomers = customers
+    .filter((customer) => {
+      const haystack = [
+        customer.id,
+        customer.name,
+        customer.email,
+        customer.phoneNumber,
+        customer.businessWebsite,
+        customer.requiredService,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(customerSearch.toLowerCase());
+    })
+    .slice(0, 12);
   const setTimedMessage = (message: string, durationMs = 3000) => {
     setSaveMessage(message);
     setTimeout(() => setSaveMessage(""), durationMs);
@@ -121,7 +151,10 @@ export default function AdminDashboard() {
 
   // Load proposal draft from localStorage & initialize ID on client side only
   useEffect(() => {
-    const savedProposal = localStorage.getItem("currentProposal");
+    const pendingProposal = localStorage.getItem("pendingProposalDraft");
+    const savedProposal =
+      pendingProposal || localStorage.getItem("currentProposal");
+
     if (savedProposal) {
       try {
         const loadedProposal = JSON.parse(savedProposal) as Proposal;
@@ -130,14 +163,14 @@ export default function AdminDashboard() {
         if (normalizedProposal.companyId) {
           setSelectedCompanyId(normalizedProposal.companyId);
         }
+        if (pendingProposal) {
+          localStorage.removeItem("pendingProposalDraft");
+        }
       } catch (e) {
         console.error("Error loading proposal:", e);
       }
     } else {
-      setProposal((prev) => ({
-        ...prev,
-        id: generateProposalId(),
-      }));
+      setProposal((prev) => ({ ...prev, id: "" }));
     }
 
     setIsHydrated(true);
@@ -166,9 +199,21 @@ export default function AdminDashboard() {
     localStorage.setItem("currentProposal", JSON.stringify(proposal));
   }, [proposal]);
 
+  useEffect(() => {
+    if (!proposal.customerId || customerSearch) {
+      return;
+    }
+
+    const customer = customers.find((item) => item.id === proposal.customerId);
+    if (customer) {
+      setCustomerSearch(customer.name);
+      setCustomerEmail(customer.email || proposal.clientEmail || "");
+    }
+  }, [proposal.customerId, proposal.clientEmail, customers, customerSearch]);
+
   // Auto-save draft to database
   useEffect(() => {
-    if (!isHydrated || !proposal.id) {
+    if (!isHydrated) {
       return;
     }
 
@@ -176,6 +221,10 @@ export default function AdminDashboard() {
       saveDraft({
         ...proposal,
         status: "draft",
+      }).then((savedDraft) => {
+        if (savedDraft?.id && savedDraft.id !== proposal.id) {
+          setProposal(savedDraft);
+        }
       }).catch((err) => {
         console.error("Failed to auto-save draft:", err);
       });
@@ -284,12 +333,84 @@ export default function AdminDashboard() {
 
   const handleSelectCompany = (companyId: string) => {
     setSelectedCompanyId(companyId);
+    setCustomerEmail("");
+    setCustomerSearch("");
+    setIsCustomerDropdownOpen(false);
+    setShowQuickCustomerForm(false);
     setProposal((prev) => ({
       ...prev,
       companyId,
+      customerId: "",
+      clientName: "",
+      clientEmail: "",
+      clientPhoneNumber: "",
       items: [],
       selectedItems: [],
     }));
+  };
+
+  const applyCustomerToProposal = (customer: Customer) => {
+    setProposal((prev) => ({
+      ...prev,
+      customerId: customer.id,
+      clientName: customer.name,
+      clientEmail: customer.email || "",
+      clientPhoneNumber: customer.phoneNumber || "",
+      projectTitle:
+        prev.projectTitle || customer.requiredService || prev.projectTitle,
+      projectDescription:
+        prev.projectDescription ||
+        (customer.requiredService
+          ? `Required service: ${customer.requiredService}`
+          : prev.projectDescription),
+      updatedAt: new Date().toISOString(),
+    }));
+    setCustomerEmail(customer.email || "");
+    setCustomerSearch(customer.name);
+    setIsCustomerDropdownOpen(false);
+    setShowQuickCustomerForm(false);
+  };
+
+  const handleCreateQuickCustomer = async () => {
+    if (!selectedCompanyId) {
+      setTimedMessage("Error: Please select a company first");
+      return;
+    }
+
+    if (!quickCustomer.name.trim()) {
+      setTimedMessage("Error: Customer name is required");
+      return;
+    }
+
+    setIsSavingCustomer(true);
+    try {
+      const customer = await createCustomer({
+        companyId: selectedCompanyId,
+        name: quickCustomer.name.trim(),
+        email: quickCustomer.email.trim(),
+        phoneNumber: quickCustomer.phoneNumber.trim(),
+        businessWebsite: quickCustomer.businessWebsite.trim(),
+        requiredService: quickCustomer.requiredService.trim(),
+      });
+
+      if (customer) {
+        applyCustomerToProposal(customer);
+        setQuickCustomer({
+          name: "",
+          email: "",
+          phoneNumber: "",
+          businessWebsite: "",
+          requiredService: "",
+        });
+        setTimedMessage("Customer added and selected", 3000);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to create customer";
+      setTimedMessage(`Error: ${message}`, 5000);
+    } finally {
+      setIsSavingCustomer(false);
+    }
   };
 
   const handleSendProposalEmail = async () => {
@@ -303,13 +424,29 @@ export default function AdminDashboard() {
       return;
     }
 
+    if (!proposal.customerId) {
+      setTimedMessage("❌ Please select or add a customer");
+      return;
+    }
+
     if (proposal.selectedItems.length === 0) {
       setTimedMessage("❌ Please select at least one service");
       return;
     }
 
-    // Ensure proposal has an ID
-    const proposalWithId = ensureProposalId(proposal);
+    let proposalWithId = ensureProposalId(proposal);
+    if (!proposalWithId.id) {
+      const savedDraft = await saveDraft({
+        ...proposalWithId,
+        status: "draft",
+      });
+
+      if (savedDraft?.id) {
+        proposalWithId = savedDraft;
+        setProposal(savedDraft);
+      }
+    }
+
     const attachmentError = validateProposalAttachments(
       proposalWithId.attachments,
     );
@@ -453,6 +590,7 @@ export default function AdminDashboard() {
         setActiveTab("general");
         setTimedMessage(`✅ ${result.message}. New proposal started.`, 5000);
         setCustomerEmail("");
+        setCustomerSearch("");
       } else {
         setTimedMessage(
           `❌ ${result.error || "Failed to send proposal"}`,
@@ -650,17 +788,219 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
+              <div className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-900">
+                      Customer
+                    </h2>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Select an existing customer or add one for this company.
+                    </p>
+                  </div>
+                  <a
+                    href="/admin/customers"
+                    className="text-xs font-semibold text-slate-600 hover:text-slate-950"
+                  >
+                    Manage
+                  </a>
+                </div>
+
+                {!selectedCompanyId ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    Select a company first to load its customers.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="relative">
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Search Customer *
+                      </label>
+                      <input
+                        type="text"
+                        value={customerSearch}
+                        onChange={(e) => {
+                          setCustomerSearch(e.target.value);
+                          setIsCustomerDropdownOpen(true);
+                        }}
+                        onFocus={() => setIsCustomerDropdownOpen(true)}
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                        placeholder={
+                          customersLoading
+                            ? "Loading customers..."
+                            : "Search by name, email, website, or service"
+                        }
+                      />
+
+                      {isCustomerDropdownOpen && (
+                        <div className="absolute left-0 right-0 z-30 mt-2 max-h-80 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                          {customersLoading ? (
+                            <div className="p-3 text-sm text-slate-500">
+                              Loading customers...
+                            </div>
+                          ) : filteredCustomers.length > 0 ? (
+                            filteredCustomers.map((customer) => (
+                              <button
+                                type="button"
+                                key={customer.id}
+                                onClick={() => applyCustomerToProposal(customer)}
+                                className="w-full rounded-xl p-3 text-left transition hover:bg-slate-50"
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="font-semibold text-slate-900">
+                                    {customer.name}
+                                  </span>
+                                  <span className="font-mono text-[11px] text-slate-400">
+                                    {customer.id}
+                                  </span>
+                                </div>
+                                <div className="mt-1 text-xs text-slate-500">
+                                  {customer.email || "No email"}{" "}
+                                  {customer.requiredService
+                                    ? `- ${customer.requiredService}`
+                                    : ""}
+                                </div>
+                              </button>
+                            ))
+                          ) : (
+                            <div className="p-3 text-sm text-slate-500">
+                              No customers found for this company.
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowQuickCustomerForm(true);
+                              setIsCustomerDropdownOpen(false);
+                              setQuickCustomer((current) => ({
+                                ...current,
+                                name: current.name || customerSearch,
+                              }));
+                            }}
+                            className="mt-1 w-full rounded-xl border border-dashed border-slate-300 p-3 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                          >
+                            + Add new customer
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {selectedCustomer && (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+                        <div className="font-semibold">{selectedCustomer.name}</div>
+                        <div className="mt-1 text-xs">
+                          {selectedCustomer.email || "No email saved"}
+                          {selectedCustomer.businessWebsite
+                            ? ` | ${selectedCustomer.businessWebsite}`
+                            : ""}
+                        </div>
+                        {selectedCustomer.requiredService && (
+                          <div className="mt-1 text-xs">
+                            Required service: {selectedCustomer.requiredService}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {showQuickCustomerForm && (
+                      <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="font-semibold text-slate-900">
+                            Add customer quickly
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowQuickCustomerForm(false)}
+                            className="text-xs font-semibold text-slate-500 hover:text-slate-900"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          value={quickCustomer.name}
+                          onChange={(e) =>
+                            setQuickCustomer((current) => ({
+                              ...current,
+                              name: e.target.value,
+                            }))
+                          }
+                          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                          placeholder="Customer name *"
+                        />
+                        <input
+                          type="email"
+                          value={quickCustomer.email}
+                          onChange={(e) =>
+                            setQuickCustomer((current) => ({
+                              ...current,
+                              email: e.target.value,
+                            }))
+                          }
+                          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                          placeholder="Email"
+                        />
+                        <input
+                          type="tel"
+                          value={quickCustomer.phoneNumber}
+                          onChange={(e) =>
+                            setQuickCustomer((current) => ({
+                              ...current,
+                              phoneNumber: e.target.value,
+                            }))
+                          }
+                          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                          placeholder="Phone number"
+                        />
+                        <input
+                          type="url"
+                          value={quickCustomer.businessWebsite}
+                          onChange={(e) =>
+                            setQuickCustomer((current) => ({
+                              ...current,
+                              businessWebsite: e.target.value,
+                            }))
+                          }
+                          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                          placeholder="Business website"
+                        />
+                        <input
+                          type="text"
+                          value={quickCustomer.requiredService}
+                          onChange={(e) =>
+                            setQuickCustomer((current) => ({
+                              ...current,
+                              requiredService: e.target.value,
+                            }))
+                          }
+                          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                          placeholder="Required service"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleCreateQuickCustomer}
+                          disabled={isSavingCustomer}
+                          className="w-full rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                        >
+                          {isSavingCustomer ? "Adding..." : "Add and Select Customer"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div className="bg-white p-6 rounded-lg shadow">
-                <h2 className="text-lg font-bold mb-4">Client Information</h2>
+                <h2 className="text-lg font-bold mb-4">Proposal Details</h2>
 
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Client Name *
+                      Customer Name *
                     </label>
                     <input
                       type="text"
-                      value={proposal.clientName}
+                      value={proposal.clientName ?? ""}
                       onChange={(e) =>
                         setProposal((prev) => ({
                           ...prev,
@@ -714,7 +1054,7 @@ export default function AdminDashboard() {
                     </label>
                     <input
                       type="text"
-                      value={proposal.projectTitle}
+                      value={proposal.projectTitle ?? ""}
                       onChange={(e) =>
                         setProposal((prev) => ({
                           ...prev,
@@ -800,6 +1140,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               </div>
+
             </div>
 
             {/* Right: Preview */}
@@ -993,6 +1334,45 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
+              {/* Customer Info */}
+              <div className="mb-8 rounded-lg border border-slate-200 bg-white p-4">
+                <div className="mb-2 text-sm font-semibold text-gray-900">
+                  Customer Information
+                </div>
+                <div className="text-sm text-gray-700">
+                  <p>
+                    <strong>{proposal.clientName || "Customer not selected"}</strong>
+                    {proposal.customerId && (
+                      <span className="ml-2 font-mono text-xs text-slate-400">
+                        {proposal.customerId}
+                      </span>
+                    )}
+                  </p>
+                  {(proposal.clientEmail || customerEmail) && (
+                    <p>Email: {proposal.clientEmail || customerEmail}</p>
+                  )}
+                  {proposal.clientPhoneNumber && (
+                    <p>Phone: {proposal.clientPhoneNumber}</p>
+                  )}
+                  {selectedCustomer?.businessWebsite && (
+                    <p>
+                      Website:{" "}
+                      <a
+                        href={selectedCustomer.businessWebsite}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="break-all text-blue-600 hover:underline"
+                      >
+                        {selectedCustomer.businessWebsite}
+                      </a>
+                    </p>
+                  )}
+                  {selectedCustomer?.requiredService && (
+                    <p>Required service: {selectedCustomer.requiredService}</p>
+                  )}
+                </div>
+              </div>
+
               {/* Services Table */}
               <div className="mb-8">
                 <div className="text-sm font-semibold text-gray-900 mb-3">
@@ -1103,9 +1483,9 @@ export default function AdminDashboard() {
                           </button>
                         </div>
                         <div className="grid gap-3 md:grid-cols-2">
-                          <input
+                            <input
                             type="text"
-                            value={attachment.label}
+                            value={attachment.label ?? ""}
                             onChange={(e) =>
                               handleAttachmentChange(
                                 attachment.id,
@@ -1118,7 +1498,7 @@ export default function AdminDashboard() {
                           />
                           <input
                             type="url"
-                            value={attachment.url}
+                            value={attachment.url ?? ""}
                             onChange={(e) =>
                               handleAttachmentChange(
                                 attachment.id,
@@ -1224,12 +1604,14 @@ export default function AdminDashboard() {
                   disabled={
                     isSendingEmail ||
                     !customerEmail ||
+                    !proposal.customerId ||
                     !proposal.clientName ||
                     proposal.selectedItems.length === 0
                   }
                   className={`flex w-full items-center justify-center gap-2 rounded-xl px-6 py-4 font-semibold transition ${
                     isSendingEmail ||
                     !customerEmail ||
+                    !proposal.customerId ||
                     !proposal.clientName ||
                     proposal.selectedItems.length === 0
                       ? "cursor-not-allowed bg-slate-200 text-slate-500"

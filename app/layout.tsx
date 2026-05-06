@@ -8,7 +8,7 @@ import "./globals.css";
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: "Proposal Maker",
+  title: "Atoz Advert Proposals",
   description: "Create and manage professional proposals with admin and client dashboards.",
   icons: {
     icon: "/Favicon-proposals.png",

@@ -4,11 +4,13 @@ import {
   normalizeProposalAttachments,
   type ProposalAttachment,
 } from "@/app/lib/proposalTypes";
+import { formatReadableId, slugifyIdSegment } from "@/lib/readableIds";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 
 type SaveDraftPayload = {
-  id: string;
+  id?: string;
   companyId?: string;
+  customerId?: string;
   clientName?: string;
   clientEmail?: string;
   clientPhoneNumber?: string;
@@ -28,6 +30,7 @@ type SaveDraftPayload = {
 type DraftProposalRow = {
   id: string;
   company_id: string | null;
+  customer_id: string | null;
   client_name: string | null;
   client_email: string | null;
   client_phone_number: string | null;
@@ -68,6 +71,7 @@ export async function GET(request: NextRequest) {
     const transformed = ((data || []) as DraftProposalRow[]).map((proposal) => ({
       id: proposal.id,
       companyId: proposal.company_id,
+      customerId: proposal.customer_id,
       clientName: proposal.client_name,
       clientEmail: proposal.client_email,
       clientPhoneNumber: proposal.client_phone_number,
@@ -101,6 +105,7 @@ export async function POST(request: NextRequest) {
     const {
       id,
       companyId,
+      customerId,
       clientName,
       clientEmail,
       clientPhoneNumber,
@@ -117,21 +122,25 @@ export async function POST(request: NextRequest) {
       status = "draft",
     } = body;
 
-    if (!id) {
-      return NextResponse.json(
-        { error: "Proposal ID is required" },
-        { status: 400 }
-      );
+    const supabase = getSupabaseAdminClient();
+    let draftId = id?.trim() || "";
+    if (!draftId) {
+      const label = clientName || projectTitle || "draft";
+      const { count } = await supabase
+        .from("draft_proposals")
+        .select("id", { count: "exact", head: true })
+        .ilike("id", `prop-${slugifyIdSegment(label)}-%`);
+      draftId = formatReadableId("prop", label, (count || 0) + 1);
     }
 
-    const supabase = getSupabaseAdminClient();
-
     // Check if draft already exists
-    const { data: existing } = await supabase
-      .from("draft_proposals")
-      .select("id")
-      .eq("id", id)
-      .single();
+    const { data: existing } = draftId
+      ? await supabase
+          .from("draft_proposals")
+          .select("id")
+          .eq("id", draftId)
+          .single()
+      : { data: null };
 
     let response;
     if (existing) {
@@ -140,6 +149,7 @@ export async function POST(request: NextRequest) {
         .from("draft_proposals")
         .update({
           company_id: companyId || null,
+          customer_id: customerId || null,
           client_name: clientName || null,
           client_email: clientEmail || null,
           client_phone_number: clientPhoneNumber || null,
@@ -155,7 +165,7 @@ export async function POST(request: NextRequest) {
           total: total,
           status,
         })
-        .eq("id", id)
+        .eq("id", draftId)
         .select()
         .single();
     } else {
@@ -163,8 +173,9 @@ export async function POST(request: NextRequest) {
       response = await supabase
         .from("draft_proposals")
         .insert({
-          id,
+          id: draftId,
           company_id: companyId || null,
+          customer_id: customerId || null,
           client_name: clientName || null,
           client_email: clientEmail || null,
           client_phone_number: clientPhoneNumber || null,
@@ -193,6 +204,7 @@ export async function POST(request: NextRequest) {
     const transformed = {
       id: data.id,
       companyId: data.company_id,
+      customerId: data.customer_id,
       clientName: data.client_name,
       clientEmail: data.client_email,
       clientPhoneNumber: data.client_phone_number,
