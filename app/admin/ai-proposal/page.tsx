@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { generateProposalHTML } from "@/lib/clientPdfService";
 import {
+  CompanyBranding,
   DEFAULT_TERMS,
   Proposal,
   ProposalItem,
@@ -21,6 +23,14 @@ type GenerateResponse = {
   };
   error?: string;
 };
+
+type Html2PdfInstance = {
+  set: (options: Record<string, unknown>) => Html2PdfInstance;
+  from: (element: HTMLElement) => Html2PdfInstance;
+  outputPdf: (outputType: "dataurlstring") => Promise<string>;
+};
+
+type Html2PdfFactory = () => Html2PdfInstance;
 
 async function readJsonResponse<T>(response: Response): Promise<T> {
   const contentType = response.headers.get("content-type") || "";
@@ -83,6 +93,8 @@ export default function AiProposalPage() {
   } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState("");
 
   const selectedCompany =
     companies.find((company) => company.id === selectedCompanyId) || null;
@@ -93,7 +105,18 @@ export default function AiProposalPage() {
     setSelectedCustomerId("");
     setSelectedServiceIds([]);
     setGeneratedProposal(null);
+    setRecipientEmail("");
   }, [selectedCompanyId]);
+
+  useEffect(() => {
+    if (!generatedProposal) {
+      return;
+    }
+
+    setRecipientEmail(
+      generatedProposal.clientEmail || selectedCustomer?.email || "",
+    );
+  }, [generatedProposal, selectedCustomer?.email]);
 
   const setTimedMessage = (
     nextMessage: { type: "success" | "error" | "info"; text: string },
@@ -236,6 +259,192 @@ export default function AiProposalPage() {
       setTimedMessage({ type: "error", text }, 6500);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const saveCurrentDraft = async () => {
+    if (!generatedProposal || !selectedCompany) {
+      throw new Error("Generate a proposal draft first.");
+    }
+
+    const payload = {
+      ...generatedProposal,
+      clientEmail: recipientEmail.trim() || generatedProposal.clientEmail || "",
+      company: selectedCompany,
+      status: "draft",
+    };
+
+    const response = await fetch("/api/draft-proposals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await readJsonResponse<{ data?: Proposal; error?: string }>(
+      response,
+    );
+
+    if (!response.ok || !result.data) {
+      throw new Error(result.error || "Failed to save draft edits");
+    }
+
+    setGeneratedProposal(result.data);
+    return result.data;
+  };
+
+  const generateProposalPdf = async (
+    proposal: Proposal,
+    company: CompanyBranding,
+  ) => {
+    const html2pdf = (window as Window & { html2pdf?: Html2PdfFactory })
+      .html2pdf;
+
+    if (!html2pdf) {
+      throw new Error(
+        "PDF library not loaded. Please refresh the page and try again.",
+      );
+    }
+
+    const selectedItems = proposal.items
+      .filter((item) => proposal.selectedItems.includes(item.id))
+      .map((item) => ({
+        ...item,
+        quantity: item.quantity || 1,
+      }));
+
+    const htmlContent = generateProposalHTML(proposal, company, selectedItems);
+    const element = document.createElement("div");
+    element.innerHTML = htmlContent;
+
+    const pdfBase64 = await new Promise<string>((resolve, reject) => {
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+      try {
+        timeoutId = setTimeout(() => {
+          reject(new Error("PDF generation timeout. Please try again."));
+        }, 30000);
+
+        html2pdf()
+          .set({
+            margin: 10,
+            filename: `${proposal.projectTitle || "proposal"}.pdf`,
+            image: { type: "jpeg", quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, logging: false },
+            jsPDF: { orientation: "portrait", unit: "mm", format: "a4" },
+            pagebreak: { mode: ["avoid-all", "css", "legacy"] },
+          })
+          .from(element)
+          .outputPdf("dataurlstring")
+          .then((pdf: string) => {
+            if (timeoutId) clearTimeout(timeoutId);
+            const base64 = pdf.replace(/^data:application\/pdf;base64,/, "");
+            if (!base64) {
+              throw new Error("Failed to convert PDF to base64.");
+            }
+            resolve(base64);
+          })
+          .catch((error: unknown) => {
+            if (timeoutId) clearTimeout(timeoutId);
+            reject(error);
+          });
+      } catch (error) {
+        if (timeoutId) clearTimeout(timeoutId);
+        reject(error);
+      }
+    });
+
+    return {
+      pdfBase64,
+      selectedItems,
+    };
+  };
+
+  const handleSendProposal = async () => {
+    if (!generatedProposal || !selectedCompany) {
+      setTimedMessage({
+        type: "error",
+        text: "Generate a proposal draft first.",
+      });
+      return;
+    }
+
+    if (!recipientEmail.trim()) {
+      setTimedMessage({
+        type: "error",
+        text: "Enter the client email before sending.",
+      });
+      return;
+    }
+
+    if (!generatedProposal.clientName?.trim()) {
+      setTimedMessage({
+        type: "error",
+        text: "Client name is required before sending.",
+      });
+      return;
+    }
+
+    if (generatedProposal.selectedItems.length === 0) {
+      setTimedMessage({
+        type: "error",
+        text: "Select at least one service before sending.",
+      });
+      return;
+    }
+
+    setIsSendingEmail(true);
+    setMessage({ type: "info", text: "Saving draft and preparing email..." });
+
+    try {
+      const savedProposal = await saveCurrentDraft();
+      const proposalToSend = {
+        ...savedProposal,
+        clientEmail: recipientEmail.trim(),
+      };
+
+      setGeneratedProposal(proposalToSend);
+
+      const { pdfBase64, selectedItems } = await generateProposalPdf(
+        proposalToSend,
+        selectedCompany,
+      );
+
+      const response = await fetch("/api/proposals/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerEmail: recipientEmail.trim(),
+          customerName: proposalToSend.clientName,
+          proposal: proposalToSend,
+          company: selectedCompany,
+          items: selectedItems,
+          pdfBase64,
+          paymentLink: proposalToSend.paymentLink || "",
+          notesHeading: "Proposal",
+        }),
+      });
+
+      const result = await readJsonResponse<{
+        success?: boolean;
+        message?: string;
+        error?: string;
+      }>(response);
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to send proposal");
+      }
+
+      setTimedMessage({
+        type: "success",
+        text:
+          result.message ||
+          `Proposal sent to ${recipientEmail.trim()} successfully.`,
+      });
+    } catch (error) {
+      const text =
+        error instanceof Error ? error.message : "Failed to send proposal";
+      setTimedMessage({ type: "error", text }, 6500);
+    } finally {
+      setIsSendingEmail(false);
     }
   };
 
@@ -452,7 +661,7 @@ export default function AiProposalPage() {
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
-            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mb-5 flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-slate-950">
                   Editable Draft
@@ -461,28 +670,52 @@ export default function AiProposalPage() {
                   Generated content is saved as a draft before review.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveEdits}
-                  disabled={!generatedProposal || isSaving}
-                  className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold !text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                  {isSaving ? "Saving..." : "Save edits"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleOpenInEditor}
-                  disabled={!generatedProposal}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
-                >
-                  Open in editor
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleOpenInEditor}
+                disabled={!generatedProposal || isSendingEmail}
+                className="self-start rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
+              >
+                Open in editor
+              </button>
             </div>
 
             {generatedProposal ? (
               <div className="space-y-5">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div className="flex-1">
+                      <label className="mb-1 block text-sm font-medium text-slate-700">
+                        Client Email
+                      </label>
+                      <input
+                        type="email"
+                        value={recipientEmail}
+                        onChange={(event) => setRecipientEmail(event.target.value)}
+                        placeholder="client@example.com"
+                      />
+                    </div>
+                    <div className="flex w-full gap-2 sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={handleSaveEdits}
+                        disabled={!generatedProposal || isSaving || isSendingEmail}
+                        className="flex-1 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold !text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300 sm:flex-none"
+                      >
+                        {isSaving ? "Saving..." : "Save edits"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSendProposal}
+                        disabled={!generatedProposal || isSaving || isSendingEmail}
+                        className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold !text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 sm:flex-none"
+                      >
+                        {isSendingEmail ? "Sending..." : "Send to client"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">
                     Project Title

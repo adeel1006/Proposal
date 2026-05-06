@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const appUrl = resolveAppUrl(request);
-    const { customerEmail, customerName, proposal, company, items, paymentLink, proposalId } = body as {
+    const { customerEmail, customerName, proposal, company, items, paymentLink, proposalId, notesHeading } = body as {
       customerEmail: string;
       customerName: string;
       proposal: Proposal;
@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
       items: ProposalItem[];
       paymentLink?: string;
       proposalId?: string;
+      notesHeading?: string;
     };
     const resolvedPaymentLink = paymentLink?.trim() || proposal.paymentLink || '';
     const attachmentError = validateProposalAttachments(proposal.attachments);
@@ -153,9 +154,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await sendProposalEmail(customerEmail, customerName, normalizedProposal, company, items, resolvedPaymentLink || undefined, {
-      appUrl,
-    });
+    await sendProposalEmail(
+      customerEmail,
+      customerName,
+      normalizedProposal,
+      company,
+      items,
+      resolvedPaymentLink || undefined,
+      {
+        appUrl,
+        notesHeading,
+      },
+    );
 
     return NextResponse.json({
       success: true,

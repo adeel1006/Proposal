@@ -39,15 +39,34 @@ function escapeHtml(value: string | undefined | null) {
     .replace(/'/g, "&#39;");
 }
 
-function renderAdditionalNotes(notes?: string) {
+function renderAdditionalNotes(
+  notes?: string,
+  heading = "Additional Notes",
+  tone: "default" | "proposal" = "default",
+) {
   if (!notes?.trim()) {
     return "";
   }
 
+  const styles =
+    tone === "proposal"
+      ? {
+          background: "#f8fafc",
+          border: "#cbd5e1",
+          heading: "#0f172a",
+          body: "#334155",
+        }
+      : {
+          background: "#fff7ed",
+          border: "#fed7aa",
+          heading: "#9a3412",
+          body: "#431407",
+        };
+
   return `
-    <div style="margin-bottom: 22px; padding: 16px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px;">
-      <div style="font-size: 12px; font-weight: 700; color: #9a3412; text-transform: uppercase; margin-bottom: 8px;">Additional Notes</div>
-      <div style="font-size: 14px; line-height: 1.6; color: #431407;">${escapeHtml(notes.trim()).replace(/\r?\n/g, "<br />")}</div>
+    <div style="margin-bottom: 22px; padding: 16px; background: ${styles.background}; border: 1px solid ${styles.border}; border-radius: 10px;">
+      <div style="font-size: 12px; font-weight: 700; color: ${styles.heading}; text-transform: uppercase; margin-bottom: 8px;">${escapeHtml(heading)}</div>
+      <div style="font-size: 14px; line-height: 1.6; color: ${styles.body};">${escapeHtml(notes.trim()).replace(/\r?\n/g, "<br />")}</div>
     </div>
   `;
 }
@@ -111,7 +130,8 @@ async function buildEmailHtml(
   subtotal: number,
   logoSrc: string,
   paymentLink?: string,
-  appUrl?: string
+  appUrl?: string,
+  notesHeading?: string
 ) {
   const resolvedPaymentLink = paymentLink?.trim() || DEFAULT_PAYMENT_LINK;
   const subtotalUSD = await currencyService.convertToUSD(subtotal, company.currency || 'USD');
@@ -224,7 +244,11 @@ async function buildEmailHtml(
                 </tr>
               </table>
 
-              ${renderAdditionalNotes(proposal.notes)}
+              ${renderAdditionalNotes(
+                proposal.notes,
+                notesHeading || "Additional Notes",
+                notesHeading === "Proposal" ? "proposal" : "default",
+              )}
 
               <table class="services-table" style="width: 100%; border-collapse: collapse; margin-bottom: 18px;">
                 <thead>
@@ -306,7 +330,12 @@ export async function sendProposalEmail(
   company: CompanyBranding,
   items: ProposalItem[],
   paymentLink?: string,
-  options?: { forceFromName?: string; forceReplyTo?: string; appUrl?: string }
+  options?: {
+    forceFromName?: string;
+    forceReplyTo?: string;
+    appUrl?: string;
+    notesHeading?: string;
+  }
 ) {
   const selectedItems = items.filter((item) => proposal.selectedItems.includes(item.id));
   const subtotal = selectedItems.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0);
@@ -320,7 +349,8 @@ export async function sendProposalEmail(
     subtotal,
     logoSrc,
     paymentLink,
-    options?.appUrl
+    options?.appUrl,
+    options?.notesHeading
   );
 
   const attachments: Attachment[] = [];
