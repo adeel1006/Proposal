@@ -298,7 +298,7 @@ export default function SubmittedProposalsPage() {
           </div>
           <Link
             href="/admin/proposals"
-            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
           >
             Back to Admin
           </Link>
