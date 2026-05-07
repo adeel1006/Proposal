@@ -1615,7 +1615,7 @@ export default function AdminDashboard() {
                     !proposal.clientName ||
                     proposal.selectedItems.length === 0
                       ? "cursor-not-allowed bg-slate-200 text-slate-500"
-                      : "bg-emerald-600 text-white hover:bg-emerald-700"
+                      : "bg-emerald-600 !text-white hover:bg-emerald-700"
                   }`}
                 >
                   {isSendingEmail ? (

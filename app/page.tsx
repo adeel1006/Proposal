@@ -20,7 +20,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="mt-16 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <section className="mt-16 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <a
             href="/admin/companies"
             className="rounded-3xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-lg"
@@ -69,6 +69,17 @@ export default function Home() {
             <h2 className="mt-4 text-lg font-semibold text-slate-900">AI Proposal</h2>
             <p className="mt-2 text-sm leading-6 text-slate-700">
               Generate draft proposals from customer data, website context, and selected services.
+            </p>
+          </a>
+
+          <a
+            href="/admin/submitted-proposals"
+            className="rounded-3xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-lg"
+          >
+            <div className="text-3xl">✉️</div>
+            <h2 className="mt-4 text-lg font-semibold text-slate-900">Submitted Proposals</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-700">
+              View, Resend and manage all submitted proposals from customers.
             </p>
           </a>
 

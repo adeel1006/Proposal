@@ -407,8 +407,8 @@ export default function SubmittedProposalsPage() {
                             disabled={resendingId === proposal.id}
                             className={`rounded px-3 py-1.5 text-xs font-medium !text-white ${
                               resendingId === proposal.id
-                                ? 'cursor-not-allowed bg-blue-300'
-                                : 'bg-blue-600 hover:bg-blue-700'
+                                ? 'cursor-not-allowed bg-slate-300'
+                                : 'bg-slate-900 hover:bg-slate-700'
                             }`}
                           >
                             {resendingId === proposal.id ? 'Resending...' : 'Resend'}
