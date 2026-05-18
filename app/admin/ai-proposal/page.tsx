@@ -24,6 +24,8 @@ type GenerateResponse = {
   error?: string;
 };
 
+type AIProvider = "openai" | "gemini";
+
 type Html2PdfInstance = {
   set: (options: Record<string, unknown>) => Html2PdfInstance;
   from: (element: HTMLElement) => Html2PdfInstance;
@@ -31,6 +33,47 @@ type Html2PdfInstance = {
 };
 
 type Html2PdfFactory = () => Html2PdfInstance;
+
+type PromptPresetId =
+  | "web-design"
+  | "graphic-design"
+  | "seo"
+  | "google-ads"
+  | "meta-ads";
+
+type PromptPreset = {
+  id: PromptPresetId;
+  label: string;
+  keywords: string[];
+};
+
+const PROMPT_PRESETS: PromptPreset[] = [
+  {
+    id: "web-design",
+    label: "Web design",
+    keywords: ["web", "website", "ui", "ux", "landing page", "design", "development"],
+  },
+  {
+    id: "graphic-design",
+    label: "Graphic design",
+    keywords: ["graphic", "branding", "logo", "creative", "brochure", "flyer", "social media"],
+  },
+  {
+    id: "seo",
+    label: "SEO",
+    keywords: ["seo", "search engine", "organic", "keyword", "content", "technical seo", "local seo"],
+  },
+  {
+    id: "google-ads",
+    label: "Google Ads",
+    keywords: ["google ads", "adwords", "ppc", "search ads", "display ads", "youtube ads"],
+  },
+  {
+    id: "meta-ads",
+    label: "Meta Ads",
+    keywords: ["meta ads", "facebook ads", "instagram ads", "social ads", "paid social"],
+  },
+];
 
 async function readJsonResponse<T>(response: Response): Promise<T> {
   const contentType = response.headers.get("content-type") || "";
@@ -69,6 +112,89 @@ function createDraftProposal(
   };
 }
 
+function normalizeMatchText(value?: string) {
+  return (value || "").toLowerCase();
+}
+
+function findMatchingServices(
+  availableServices: ProposalItem[],
+  keywords: string[],
+) {
+  return availableServices.filter((service) => {
+    const haystack = normalizeMatchText(
+      [service.name, service.category, service.description].filter(Boolean).join(" "),
+    );
+    return keywords.some((keyword) => haystack.includes(keyword));
+  });
+}
+
+function formatServiceNames(serviceList: ProposalItem[]) {
+  const names = serviceList
+    .map((service) => service.name.trim())
+    .filter(Boolean);
+
+  if (names.length === 0) {
+    return "the selected company services";
+  }
+
+  return names.join(", ");
+}
+
+function buildPresetScopePrompt({
+  presetId,
+  companyName,
+  customerWebsite,
+  matchingServices,
+}: {
+  presetId: PromptPresetId;
+  companyName: string;
+  customerWebsite?: string;
+  matchingServices: ProposalItem[];
+}) {
+  const serviceNames = formatServiceNames(matchingServices);
+  const shortProposalRule =
+    "Keep the proposal short, to the point, engaging, and interesting for the client.";
+
+  switch (presetId) {
+    case "web-design":
+      return [
+        shortProposalRule,
+        `Focus only on ${companyName}'s relevant web design services: ${serviceNames}.`,
+        "Position the proposal around a clean, conversion-focused website experience and clear business value.",
+        "Do not include services outside the selected company offerings, and do not promise timelines, results, or unsupported features.",
+      ].join(" ");
+    case "graphic-design":
+      return [
+        shortProposalRule,
+        `Focus only on ${companyName}'s relevant graphic design services: ${serviceNames}.`,
+        "Make the proposal feel creative, practical, and client-friendly, with emphasis on brand presentation and visual consistency.",
+        "Do not include services outside the selected company offerings, and do not promise unsupported deliverables or outcomes.",
+      ].join(" ");
+    case "seo":
+      return [
+        shortProposalRule,
+        `Focus only on ${companyName}'s relevant SEO services: ${serviceNames}.`,
+        `Use the client website${customerWebsite ? ` (${customerWebsite})` : ""} to identify and shortlist a few likely target keywords based on visible content and business context.`,
+        "Mention those keywords carefully without inventing search volume, rankings, traffic numbers, or guaranteed results.",
+        "Keep the SEO plan practical and concise, and do not include services outside the selected company offerings.",
+      ].join(" ");
+    case "google-ads":
+      return [
+        shortProposalRule,
+        `Focus only on ${companyName}'s relevant Google Ads services: ${serviceNames}.`,
+        "Keep the pitch centered on campaign structure, lead quality, and commercially relevant intent.",
+        "Do not promise ROAS, lead volume, conversion rates, or ad spend results, and do not include services outside the selected company offerings.",
+      ].join(" ");
+    case "meta-ads":
+      return [
+        shortProposalRule,
+        `Focus only on ${companyName}'s relevant Meta Ads services: ${serviceNames}.`,
+        "Keep the pitch centered on audience targeting, creative testing, and conversion-focused messaging for Facebook and Instagram.",
+        "Do not promise ROAS, lead volume, conversion rates, or ad spend results, and do not include services outside the selected company offerings.",
+      ].join(" ");
+  }
+}
+
 export default function AiProposalPage() {
   const router = useRouter();
   const { companies, loading: companiesLoading } = useCompanies();
@@ -80,8 +206,9 @@ export default function AiProposalPage() {
   );
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
+  const [provider, setProvider] = useState<AIProvider>("openai");
   const [agencyTone, setAgencyTone] = useState(
-    "Professional, clear, consultative, and business-focused.",
+    "Professional, concise, persuasive, and business-focused.",
   );
   const [scopeLimitations, setScopeLimitations] = useState("");
   const [generatedProposal, setGeneratedProposal] = useState<Proposal | null>(
@@ -134,6 +261,47 @@ export default function AiProposalPage() {
     );
   };
 
+  const applyPromptPreset = (preset: PromptPreset) => {
+    if (!selectedCompany) {
+      setTimedMessage(
+        {
+          type: "error",
+          text: "Select a company before applying a prompt preset.",
+        },
+        4000,
+      );
+      return;
+    }
+
+    const matchingServices = findMatchingServices(services, preset.keywords);
+    if (matchingServices.length > 0) {
+      setSelectedServiceIds(matchingServices.map((service) => service.id));
+    }
+
+    setAgencyTone(
+      "Professional, clear, concise, persuasive, and interesting for the client.",
+    );
+    setScopeLimitations(
+      buildPresetScopePrompt({
+        presetId: preset.id,
+        companyName: selectedCompany.businessName,
+        customerWebsite: selectedCustomer?.businessWebsite,
+        matchingServices,
+      }),
+    );
+
+    setTimedMessage(
+      {
+        type: "info",
+        text:
+          matchingServices.length > 0
+            ? `${preset.label} prompt applied and matching company services selected.`
+            : `${preset.label} prompt applied. No close service match was found, so service selection was left unchanged.`,
+      },
+      4000,
+    );
+  };
+
   const buildProposalPayload = () => {
     if (!selectedCustomer) {
       return null;
@@ -181,7 +349,10 @@ export default function AiProposalPage() {
     }
 
     setIsGenerating(true);
-    setMessage({ type: "info", text: "Generating proposal draft..." });
+    setMessage({
+      type: "info",
+      text: `Generating proposal draft with ${provider === "openai" ? "OpenAI" : "Gemini"}...`,
+    });
 
     try {
       const response = await fetch("/api/proposals/generate-ai", {
@@ -193,6 +364,7 @@ export default function AiProposalPage() {
           customer: selectedCustomer,
           agencyTone,
           scopeLimitations,
+          provider,
         }),
       });
 
@@ -602,6 +774,28 @@ export default function AiProposalPage() {
                   ))
                 )}
               </div>
+
+              <div className="mt-5 border-t border-slate-200 pt-5">
+                <p className="text-sm font-medium text-slate-700">
+                  Quick AI prompts
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Apply a short, company-aware preset and auto-pick matching services where possible.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {PROMPT_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => applyPromptPreset(preset)}
+                      disabled={!selectedCompany || servicesLoading}
+                      className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
@@ -609,6 +803,21 @@ export default function AiProposalPage() {
                 AI Instructions
               </h2>
               <div className="mt-5 space-y-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    AI Provider
+                  </label>
+                  <select
+                    value={provider}
+                    onChange={(event) =>
+                      setProvider(event.target.value as AIProvider)
+                    }
+                  >
+                    <option value="openai">OpenAI</option>
+                    <option value="gemini">Gemini</option>
+                  </select>
+                </div>
+
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">
                     Agency Tone
@@ -752,7 +961,7 @@ export default function AiProposalPage() {
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Proposal Body / Notes
+                    Proposal Body
                   </label>
                   <textarea
                     value={generatedProposal.notes ?? ""}
@@ -770,7 +979,7 @@ export default function AiProposalPage() {
             ) : (
               <div className="flex min-h-96 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
                 Select source details, add scope limitations, and generate a
-                draft to review here.
+                draft to review & Modify here.
               </div>
             )}
           </section>

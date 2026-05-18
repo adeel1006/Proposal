@@ -7,62 +7,125 @@ import { PageHeaderSkeleton, SelectSkeleton, ServiceListSkeleton } from '@/app/c
 import { useCompanies } from '@/lib/hooks/useCompanies';
 import { useServices } from '@/lib/hooks/useServices';
 
+type ServiceFormState = ProposalItem & {
+  companyId: string;
+};
+
+const emptyService: ServiceFormState = {
+  id: '',
+  companyId: '',
+  name: '',
+  description: '',
+  price: 0,
+  currency: 'USD',
+  category: 'General',
+  quantity: 1,
+};
+
 export default function ServicesPage() {
   const { companies, loading: companiesLoading } = useCompanies();
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
-  const { services: companyServices, loading: servicesLoading, createService, deleteService } = useServices(selectedCompanyId);
-  
+  const { services: companyServices, loading: servicesLoading, createService, updateService, deleteService } = useServices(selectedCompanyId);
   const [showAddService, setShowAddService] = useState(false);
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [newService, setNewService] = useState<ProposalItem>({
-    id: '',
-    name: '',
-    description: '',
-    price: 0,
-    currency: 'USD',
-    category: 'General',
-    quantity: 1,
-  });
+  const [newService, setNewService] = useState<ServiceFormState>(emptyService);
 
   const selectedCompany = companies.find((c) => c.id === selectedCompanyId) || null;
 
-  const handleAddService = () => {
-    if (!newService.name || !newService.description) {
-      setMessage({ type: 'error', text: 'Please fill in service name and description' });
-      setTimeout(() => setMessage(null), 3000);
+  const setTimedMessage = (nextMessage: { type: 'success' | 'error'; text: string }) => {
+    setMessage(nextMessage);
+    setTimeout(() => setMessage(null), 3000);
+  };
+
+  const handleCompanyChange = (companyId: string) => {
+    const company = companies.find((item) => item.id === companyId) || null;
+    setSelectedCompanyId(companyId);
+    setShowAddService(false);
+    setEditingServiceId(null);
+    setNewService({
+      ...emptyService,
+      companyId,
+      currency: company?.currency || 'USD',
+    });
+  };
+
+  const resetServiceForm = () => {
+    setShowAddService(false);
+    setEditingServiceId(null);
+    setNewService({
+      ...emptyService,
+      companyId: selectedCompanyId,
+      currency: selectedCompany?.currency || 'USD',
+    });
+  };
+
+  const openAddServiceForm = () => {
+    setEditingServiceId(null);
+    setNewService({
+      ...emptyService,
+      companyId: selectedCompanyId,
+      currency: selectedCompany?.currency || 'USD',
+    });
+    setShowAddService(true);
+  };
+
+  const handleEditService = (service: ProposalItem) => {
+    setEditingServiceId(service.id);
+    setNewService({
+      id: service.id,
+      companyId: selectedCompanyId,
+      name: service.name,
+      description: service.description,
+      price: service.price,
+      currency: service.currency || selectedCompany?.currency || 'USD',
+      category: service.category || 'General',
+      quantity: service.quantity || 1,
+    });
+    setShowAddService(true);
+  };
+
+  const handleSaveService = () => {
+    if (!newService.name.trim() || !newService.description.trim()) {
+      setTimedMessage({ type: 'error', text: 'Please fill in service name and description' });
       return;
     }
 
     if (!selectedCompanyId) {
-      setMessage({ type: 'error', text: 'Please select a company first' });
-      setTimeout(() => setMessage(null), 3000);
+      setTimedMessage({ type: 'error', text: 'Please select a company first' });
       return;
     }
 
-    const service: Omit<ProposalItem, 'id'> & { companyId: string } = {
-      ...newService,
+    const payload: Omit<ProposalItem, 'id'> & { companyId: string } = {
       companyId: selectedCompanyId,
+      name: newService.name.trim(),
+      description: newService.description.trim(),
+      price: Number.isFinite(newService.price) ? newService.price : 0,
       currency: selectedCompany?.currency || 'USD',
+      category: newService.category?.trim() || 'General',
+      quantity: newService.quantity || 1,
     };
 
-    createService(service)
+    const saveAction = editingServiceId
+      ? updateService({
+          ...payload,
+          id: editingServiceId,
+        })
+      : createService(payload);
+
+    saveAction
       .then(() => {
-        setMessage({ type: 'success', text: 'Service added successfully' });
-        setTimeout(() => setMessage(null), 3000);
-        setNewService({
-          id: '',
-          name: '',
-          description: '',
-          price: 0,
-          currency: selectedCompany?.currency || 'USD',
-          category: 'General',
-          quantity: 1,
+        setTimedMessage({
+          type: 'success',
+          text: editingServiceId ? 'Service updated successfully' : 'Service added successfully',
         });
-        setShowAddService(false);
+        resetServiceForm();
       })
       .catch(() => {
-        setMessage({ type: 'error', text: 'Failed to add service' });
-        setTimeout(() => setMessage(null), 3000);
+        setTimedMessage({
+          type: 'error',
+          text: editingServiceId ? 'Failed to update service' : 'Failed to add service',
+        });
       });
   };
 
@@ -70,12 +133,10 @@ export default function ServicesPage() {
     if (window.confirm('Delete this service?')) {
       deleteService(id)
         .then(() => {
-          setMessage({ type: 'success', text: 'Service deleted successfully' });
-          setTimeout(() => setMessage(null), 3000);
+          setTimedMessage({ type: 'success', text: 'Service deleted successfully' });
         })
         .catch(() => {
-          setMessage({ type: 'error', text: 'Failed to delete service' });
-          setTimeout(() => setMessage(null), 3000);
+          setTimedMessage({ type: 'error', text: 'Failed to delete service' });
         });
     }
   };
@@ -102,42 +163,40 @@ export default function ServicesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
+      <div className="mx-auto max-w-7xl">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Services Dashboard</h1>
-          <p className="text-gray-600">
-            Manage services/products for each company
-          </p>
+          <h1 className="mb-2 text-3xl font-bold text-gray-900">Services Dashboard</h1>
+          <p className="text-gray-600">Manage services/products for each company</p>
         </div>
 
-        {/* Message Alert */}
         {message && (
           <div
-            className={`mb-4 p-4 rounded-lg ${
+            className={`mb-4 rounded-lg p-4 ${
               message.type === 'success'
-                ? 'bg-green-100 text-green-800 border border-green-300'
-                : 'bg-red-100 text-red-800 border border-red-300'
+                ? 'border border-green-300 bg-green-100 text-green-800'
+                : 'border border-red-300 bg-red-100 text-red-800'
             }`}
           >
             {message.text}
           </div>
         )}
 
-        {/* Company Selector */}
-        <div className="mb-6 bg-white p-6 rounded-lg shadow">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+        <div className="mb-6 rounded-lg bg-white p-6 shadow">
+          <label className="mb-2 block text-sm font-medium text-gray-700">
             Select Company
           </label>
           {companies.length === 0 ? (
-            <div className="p-4 bg-yellow-50 border border-yellow-300 rounded text-yellow-800">
-              No companies found. <Link href="/admin/companies" className="text-blue-600 hover:underline font-medium">Create a company first</Link>
+            <div className="rounded border border-yellow-300 bg-yellow-50 p-4 text-yellow-800">
+              No companies found.{' '}
+              <Link href="/admin/companies" className="font-medium text-blue-600 hover:underline">
+                Create a company first
+              </Link>
             </div>
           ) : (
             <select
               value={selectedCompanyId}
-              onChange={(e) => setSelectedCompanyId(e.target.value)}
-              className="w-full border rounded px-4 py-2 text-lg"
+              onChange={(e) => handleCompanyChange(e.target.value)}
+              className="w-full rounded border px-4 py-2 text-lg"
             >
               <option value="">-- Select a company --</option>
               {companies.map((company) => (
@@ -149,21 +208,20 @@ export default function ServicesPage() {
           )}
         </div>
 
-        {/* Company Information Card */}
         {selectedCompany && (
-          <div className="mb-6 bg-white p-6 rounded-lg shadow border-l-4 border-blue-600">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="mb-6 rounded-lg border-l-4 border-blue-600 bg-white p-6 shadow">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
               <div>
                 <p className="text-sm text-gray-600">Business Name</p>
-                <p className="font-bold text-lg text-gray-900">{selectedCompany.businessName}</p>
+                <p className="text-lg font-bold text-gray-900">{selectedCompany.businessName}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Currency</p>
-                <p className="font-bold text-lg text-gray-900">{selectedCompany.currency}</p>
+                <p className="text-lg font-bold text-gray-900">{selectedCompany.currency}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Email</p>
-                <p className="text-gray-900 truncate">{selectedCompany.email}</p>
+                <p className="truncate text-gray-900">{selectedCompany.email}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Phone</p>
@@ -171,39 +229,38 @@ export default function ServicesPage() {
               </div>
             </div>
 
-            {/* Social Media Links */}
             {(selectedCompany.instagram || selectedCompany.linkedin || selectedCompany.twitter || selectedCompany.facebook || selectedCompany.youtube || selectedCompany.pinterest) && (
-              <div className="mt-4 pt-4 border-t">
-                <p className="text-sm text-gray-600 mb-2">Social Media</p>
-                <div className="flex gap-3 flex-wrap">
+              <div className="mt-4 border-t pt-4">
+                <p className="mb-2 text-sm text-gray-600">Social Media</p>
+                <div className="flex flex-wrap gap-3">
                   {selectedCompany.instagram && (
-                    <a href={selectedCompany.instagram} target="_blank" rel="noopener noreferrer" className="text-pink-600 hover:text-pink-800 font-medium">
-                      📷 Instagram
+                    <a href={selectedCompany.instagram} target="_blank" rel="noopener noreferrer" className="font-medium text-pink-600 hover:text-pink-800">
+                      Instagram
                     </a>
                   )}
                   {selectedCompany.linkedin && (
-                    <a href={selectedCompany.linkedin} target="_blank" rel="noopener noreferrer" className="text-blue-700 hover:text-blue-900 font-medium">
-                      💼 LinkedIn
+                    <a href={selectedCompany.linkedin} target="_blank" rel="noopener noreferrer" className="font-medium text-blue-700 hover:text-blue-900">
+                      LinkedIn
                     </a>
                   )}
                   {selectedCompany.twitter && (
-                    <a href={selectedCompany.twitter} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-600 font-medium">
-                      𝕏 Twitter
+                    <a href={selectedCompany.twitter} target="_blank" rel="noopener noreferrer" className="font-medium text-blue-400 hover:text-blue-600">
+                      Twitter
                     </a>
                   )}
                   {selectedCompany.facebook && (
-                    <a href={selectedCompany.facebook} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 font-medium">
-                      👍 Facebook
+                    <a href={selectedCompany.facebook} target="_blank" rel="noopener noreferrer" className="font-medium text-blue-600 hover:text-blue-800">
+                      Facebook
                     </a>
                   )}
                   {selectedCompany.youtube && (
-                    <a href={selectedCompany.youtube} target="_blank" rel="noopener noreferrer" className="text-red-600 hover:text-red-800 font-medium">
-                      ▶️ YouTube
+                    <a href={selectedCompany.youtube} target="_blank" rel="noopener noreferrer" className="font-medium text-red-600 hover:text-red-800">
+                      YouTube
                     </a>
                   )}
                   {selectedCompany.pinterest && (
-                    <a href={selectedCompany.pinterest} target="_blank" rel="noopener noreferrer" className="text-red-700 hover:text-red-900 font-medium">
-                      📌 Pinterest
+                    <a href={selectedCompany.pinterest} target="_blank" rel="noopener noreferrer" className="font-medium text-red-700 hover:text-red-900">
+                      Pinterest
                     </a>
                   )}
                 </div>
@@ -212,7 +269,7 @@ export default function ServicesPage() {
 
             {selectedCompany.website && (
               <div className="mt-2">
-                <p className="text-sm text-gray-600">🌐</p>
+                <p className="text-sm text-gray-600">Website</p>
                 <a href={selectedCompany.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
                   {selectedCompany.website}
                 </a>
@@ -221,64 +278,78 @@ export default function ServicesPage() {
           </div>
         )}
 
-        {/* Services Section */}
         {selectedCompanyId && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex justify-between items-center mb-6">
+          <div className="rounded-lg bg-white p-6 shadow">
+            <div className="mb-6 flex items-center justify-between">
               <h2 className="text-2xl font-bold text-gray-900">Services/Products</h2>
               <button
-                onClick={() => setShowAddService(!showAddService)}
-                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-medium"
+                onClick={() => (showAddService ? resetServiceForm() : openAddServiceForm())}
+                className="rounded bg-green-600 px-4 py-2 font-medium text-white hover:bg-green-700"
               >
-                {showAddService ? '✕ Cancel' : '+ Add Service'}
+                {showAddService ? 'Cancel' : '+ Add Service'}
               </button>
             </div>
 
-            {/* Add Service Form */}
             {showAddService && (
-              <div className="mb-6 p-4 bg-gray-50 border-2 border-dashed rounded-lg">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="mb-6 rounded-lg border-2 border-dashed bg-gray-50 p-4">
+                <div className="mb-4 flex items-start justify-between gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      {editingServiceId ? 'Edit Service' : 'Add Service'}
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      {editingServiceId
+                        ? 'Update the selected service details.'
+                        : 'Create a reusable service for the selected company.'}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-600">
+                    {selectedCompany?.currency || 'USD'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
                       Service Name *
                     </label>
                     <input
                       type="text"
                       value={newService.name}
                       onChange={(e) => setNewService({ ...newService, name: e.target.value })}
-                      className="w-full border rounded px-3 py-2"
+                      className="w-full rounded border px-3 py-2"
                       placeholder="e.g., Web Design"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
                       Category
                     </label>
                     <input
                       type="text"
                       value={newService.category || ''}
                       onChange={(e) => setNewService({ ...newService, category: e.target.value })}
-                      className="w-full border rounded px-3 py-2"
+                      className="w-full rounded border px-3 py-2"
                       placeholder="e.g., Design"
                     />
                   </div>
 
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
                       Description *
                     </label>
                     <textarea
                       value={newService.description}
                       onChange={(e) => setNewService({ ...newService, description: e.target.value })}
-                      className="w-full border rounded px-3 py-2"
+                      className="w-full rounded border px-3 py-2"
                       placeholder="Describe this service..."
                       rows={3}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
                       Price
                     </label>
                     <input
@@ -286,35 +357,40 @@ export default function ServicesPage() {
                       step="0.01"
                       min="0"
                       value={newService.price}
-                      onChange={(e) => setNewService({ ...newService, price: parseFloat(e.target.value) })}
-                      className="w-full border rounded px-3 py-2"
+                      onChange={(e) =>
+                        setNewService({
+                          ...newService,
+                          price: Number(e.target.value) || 0,
+                        })
+                      }
+                      className="w-full rounded border px-3 py-2"
                       placeholder="0.00"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
                       Currency
                     </label>
                     <input
                       type="text"
                       value={selectedCompany?.currency || 'USD'}
                       disabled
-                      className="w-full border rounded px-3 py-2 bg-gray-100"
+                      className="w-full rounded border bg-gray-100 px-3 py-2"
                     />
                   </div>
                 </div>
 
                 <div className="mt-4 flex gap-2">
                   <button
-                    onClick={handleAddService}
-                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+                    onClick={handleSaveService}
+                    className="rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
                   >
-                    Save Service
+                    {editingServiceId ? 'Update Service' : 'Save Service'}
                   </button>
                   <button
-                    onClick={() => setShowAddService(false)}
-                    className="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-500"
+                    onClick={resetServiceForm}
+                    className="rounded bg-gray-400 px-4 py-2 text-white hover:bg-gray-500"
                   >
                     Cancel
                   </button>
@@ -322,16 +398,14 @@ export default function ServicesPage() {
               </div>
             )}
 
-            {/* Loading State */}
             {servicesLoading && <ServiceListSkeleton />}
 
-            {/* Services List */}
             {!servicesLoading && companyServices.length === 0 && (
-              <div className="text-center py-12 bg-gray-50 rounded border-2 border-dashed">
-                <p className="text-gray-500 text-lg">No services added yet</p>
+              <div className="rounded border-2 border-dashed bg-gray-50 py-12 text-center">
+                <p className="text-lg text-gray-500">No services added yet</p>
                 <button
-                  onClick={() => setShowAddService(true)}
-                  className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  onClick={openAddServiceForm}
+                  className="mt-4 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
                 >
                   Add First Service
                 </button>
@@ -341,13 +415,10 @@ export default function ServicesPage() {
             {!servicesLoading && companyServices.length > 0 && (
               <div className="space-y-3">
                 {companyServices.map((service) => (
-                  <div
-                    key={service.id}
-                    className="p-4 border rounded-lg hover:shadow-md transition"
-                  >
-                    <div className="flex justify-between items-start mb-2">
+                  <div key={service.id} className="rounded-lg border p-4 transition hover:shadow-md">
+                    <div className="mb-2 flex items-start justify-between">
                       <div>
-                        <h3 className="font-bold text-lg text-gray-900">{service.name}</h3>
+                        <h3 className="text-lg font-bold text-gray-900">{service.name}</h3>
                         <p className="text-sm text-gray-600">{service.category}</p>
                       </div>
                       <div className="text-right">
@@ -357,21 +428,18 @@ export default function ServicesPage() {
                       </div>
                     </div>
 
-                    <p className="text-gray-700 mb-3">{service.description}</p>
+                    <p className="mb-3 text-gray-700">{service.description}</p>
 
                     <div className="flex gap-2">
                       <button
-                        onClick={() => {
-                          // Edit functionality can be added here
-                          alert('Edit functionality coming soon');
-                        }}
-                        className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+                        onClick={() => handleEditService(service)}
+                        className="rounded bg-blue-500 px-3 py-1 text-sm text-white hover:bg-blue-600"
                       >
                         Edit
                       </button>
                       <button
                         onClick={() => handleDeleteService(service.id)}
-                        className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600"
+                        className="rounded bg-red-500 px-3 py-1 text-sm text-white hover:bg-red-600"
                       >
                         Delete
                       </button>
@@ -383,18 +451,11 @@ export default function ServicesPage() {
           </div>
         )}
 
-        {/* Navigation */}
         <div className="mt-8 flex gap-3">
-          <Link
-            href="/admin/companies"
-            className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
-          >
+          <Link href="/admin/companies" className="rounded bg-gray-500 px-4 py-2 text-white hover:bg-gray-600">
             Back to Companies
           </Link>
-          <Link
-            href="/"
-            className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
-          >
+          <Link href="/" className="rounded bg-gray-500 px-4 py-2 text-white hover:bg-gray-600">
             Back to Home
           </Link>
         </div>
