@@ -906,7 +906,7 @@ async function callOpenAIResponses({
           schema: RESPONSE_SCHEMA,
           strict: true,
         },
-        verbosity: "low",
+        verbosity: "medium",
       },
       max_output_tokens: 1200,
     }),
