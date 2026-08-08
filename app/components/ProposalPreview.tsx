@@ -154,7 +154,9 @@ export default function ProposalPreview({
               <tr className="border-b border-slate-200">
                 <th className="py-2 text-left font-semibold text-slate-600">Service</th>
                 <th className="py-2 text-left font-semibold text-slate-600">Description</th>
-                <th className="py-2 text-right font-semibold text-slate-600">Price</th>
+                {isInvoice && (
+                  <th className="py-2 text-right font-semibold text-slate-600">Price</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -163,14 +165,16 @@ export default function ProposalPreview({
                   <tr key={item.id} className="border-b border-slate-100">
                     <td className="py-3 font-medium text-slate-900">{item.name}</td>
                     <td className="py-3 text-sm text-slate-600">{item.description}</td>
-                    <td className="py-3 text-right font-semibold text-slate-900">
-                      {item.currency} {(item.price * (item.quantity || 1)).toFixed(2)}
-                    </td>
+                    {isInvoice && (
+                      <td className="py-3 text-right font-semibold text-slate-900">
+                        {item.currency} {(item.price * (item.quantity || 1)).toFixed(2)}
+                      </td>
+                    )}
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={3} className="py-4 text-center text-slate-500">
+                  <td colSpan={isInvoice ? 3 : 2} className="py-4 text-center text-slate-500">
                     No services selected
                   </td>
                 </tr>
@@ -179,41 +183,43 @@ export default function ProposalPreview({
           </table>
 
           {/* Total */}
-          <div className="mt-6 flex flex-col gap-4 pb-2">
-            <div className="rounded-2xl bg-slate-950 p-4 text-white">
-              <div className="flex flex-wrap gap-8">
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-400">Subtotal</div>
-                  <div className="text-xl font-semibold">{currency} {(companyCurrencyTotal || total).toFixed(2)}</div>
-                  {currency !== 'USD' && usdTotal !== undefined && (
-                    <div className="mt-1 text-xs text-slate-300">USD {usdTotal.toFixed(2)}</div>
-                  )}
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-400">Total</div>
-                  <div className="text-2xl font-semibold">{currency} {(companyCurrencyTotal || total).toFixed(2)}</div>
-                  {currency !== 'USD' && usdTotal !== undefined && (
-                    <div className="mt-1 text-xs text-slate-300">USD {usdTotal.toFixed(2)}</div>
-                  )}
+          {isInvoice ? (
+            <div className="mt-6 flex flex-col gap-4 pb-2">
+              <div className="rounded-2xl bg-slate-950 p-4 text-white">
+                <div className="flex flex-wrap gap-8">
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-slate-400">Subtotal</div>
+                    <div className="text-xl font-semibold">{currency} {(companyCurrencyTotal || total).toFixed(2)}</div>
+                    {currency !== 'USD' && usdTotal !== undefined && (
+                      <div className="mt-1 text-xs text-slate-300">USD {usdTotal.toFixed(2)}</div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-slate-400">Total</div>
+                    <div className="text-2xl font-semibold">{currency} {(companyCurrencyTotal || total).toFixed(2)}</div>
+                    {currency !== 'USD' && usdTotal !== undefined && (
+                      <div className="mt-1 text-xs text-slate-300">USD {usdTotal.toFixed(2)}</div>
+                    )}
+                  </div>
                 </div>
               </div>
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Payment Link</div>
+                {paymentLink ? (
+                  <a
+                    href={paymentLink}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="text-blue-600 break-words hover:underline"
+                  >
+                    {paymentLink}
+                  </a>
+                ) : (
+                  <div className="text-sm text-gray-500">No payment link configured yet.</div>
+                )}
+              </div>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Payment Link</div>
-              {paymentLink ? (
-                <a
-                  href={paymentLink}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="text-blue-600 break-words hover:underline"
-                >
-                  {paymentLink}
-                </a>
-              ) : (
-                <div className="text-sm text-gray-500">No payment link configured yet.</div>
-              )}
-            </div>
-          </div>
+          ) : null}
         </div>
 
         {attachments.length > 0 && (

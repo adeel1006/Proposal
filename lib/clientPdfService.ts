@@ -80,8 +80,6 @@ export function generateProposalHTML(
     quantity: number;
   }>
 ): string {
-  const currency = company.currency || "USD";
-  const total = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const escapeHtml = (value: string | undefined | null) => String(value ?? "")
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -132,8 +130,7 @@ export function generateProposalHTML(
       <div class="proposal-meta"><div class="meta-card"><div class="meta-label">Prepared for</div><div class="meta-value">${escapeHtml(proposal.clientName)}</div></div><div class="meta-card"><div class="meta-label">Project</div><div class="meta-value">${escapeHtml(proposal.projectTitle)}</div></div><div class="meta-card"><div class="meta-label">Valid until</div><div class="meta-value">${escapeHtml(proposal.validUntil || "Further notice")}</div></div></div>
       ${proposal.projectDescription ? `<div class="section-title">Project Overview</div><div class="overview">${escapeHtml(proposal.projectDescription).replace(/\r?\n/g, "<br>")}</div>` : ""}
       <div class="section-title">Scope of Work</div>
-      <table class="scope-table"><thead><tr><th style="width:43%">Service</th><th style="width:29%">Deliverables</th><th style="width:8%">Qty</th><th style="width:20%; text-align:right">Investment</th></tr></thead><tbody>${selectedItems.map((item) => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${escapeHtml(item.description)}</td><td class="number">${item.quantity}</td><td class="number">${currency} ${(item.price * item.quantity).toFixed(2)}</td></tr>`).join("")}</tbody></table>
-      <div class="investment"><div class="investment-row"><span>Proposal total</span><span>${currency} ${total.toFixed(2)}</span></div><div class="investment-row investment-total"><span>Total investment</span><span>${currency} ${total.toFixed(2)}</span></div></div>
+      <table class="scope-table"><thead><tr><th style="width:44%">Service</th><th style="width:48%">Deliverables</th><th style="width:8%">Qty</th></tr></thead><tbody>${selectedItems.map((item) => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${escapeHtml(item.description)}</td><td class="number">${item.quantity}</td></tr>`).join("")}</tbody></table>
       <div class="section-title">Project Terms</div><div class="terms-grid"><div class="term-card"><strong>Timeline</strong>${escapeHtml(proposal.terms?.timeline || "To be agreed")}</div><div class="term-card"><strong>Payment</strong>${proposal.terms?.depositPercent ? `${proposal.terms.depositPercent}% deposit required` : "As agreed"}</div></div>
       ${proposal.notes ? `<div class="notes"><strong>Additional Notes</strong><br>${escapeHtml(proposal.notes).replace(/\r?\n/g, "<br>")}</div>` : ""}
       ${proposal.terms?.additionalTerms ? `<div class="notes"><strong>Terms &amp; Conditions</strong><br>${escapeHtml(proposal.terms.additionalTerms).replace(/\r?\n/g, "<br>")}</div>` : ""}

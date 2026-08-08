@@ -173,14 +173,14 @@ async function buildEmailHtml(
   const documentTitle = isInvoice ? "Project Invoice" : "Project Proposal";
   const introCopy = isInvoice
     ? `Please find your invoice for <strong>${proposal.projectTitle}</strong>. The selected services and invoice total are included below, and the invoice PDF is attached for your records.`
-    : `Please review your proposal for <strong>${proposal.projectTitle}</strong>. You can accept and continue to payment, or decline. Details of the proposal are included below. If you have any questions, feel free to reply to this email.`;
+    : `Please review your proposal for <strong>${proposal.projectTitle}</strong>. Details of the scope are included below. If you have any questions, feel free to reply to this email.`;
   const actionsHtml = isInvoice
     ? ""
     : `
               <table style="width: 100%; margin-bottom: 8px;">
                 <tr>
                   <td class="action-cell" style="padding: 8px 0; text-align: left;">
-                    <a href="${acceptLink}" class="action-button" style="display: inline-block; padding: 10px 16px; background: #059669; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600;">Accept and Pay</a>
+                    <a href="${acceptLink}" class="action-button" style="display: inline-block; padding: 10px 16px; background: #059669; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600;">Accept Proposal</a>
                   </td>
                 </tr>
                 <tr>
@@ -304,14 +304,14 @@ async function buildEmailHtml(
                   <tr style="background: #f1f5f9;">
                     <th style="text-align: left; padding: 10px; border-bottom: 1px solid #e2e8f0;">Service</th>
                     <th style="text-align: center; padding: 10px; border-bottom: 1px solid #e2e8f0;">Qty</th>
-                    <th style="text-align: right; padding: 10px; border-bottom: 1px solid #e2e8f0;">Amount</th>
+                    ${isInvoice ? '<th style="text-align: right; padding: 10px; border-bottom: 1px solid #e2e8f0;">Amount</th>' : ""}
                   </tr>
                 </thead>
                 <tbody>
                   ${await Promise.all(selectedItems
                     .map(async (item) => {
                       const itemTotal = item.price * (item.quantity || 1);
-                      const itemTotalUSD = await currencyService.convertToUSD(itemTotal, company.currency || 'USD');
+                      const itemTotalUSD = isInvoice ? await currencyService.convertToUSD(itemTotal, company.currency || 'USD') : 0;
                       return `
                     <tr>
                       <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">
@@ -319,7 +319,7 @@ async function buildEmailHtml(
                         <span style="font-size: 12px; color: #64748b;">${item.description}</span>
                       </td>
                       <td style="padding: 10px; text-align: center; border-bottom: 1px solid #e2e8f0;">${item.quantity || 1}</td>
-                      <td style="padding: 10px; text-align: right; border-bottom: 1px solid #e2e8f0;">${company.currency || "USD"} ${(item.price * (item.quantity || 1)).toFixed(2)}<br /><span style="font-size: 11px; color: #64748b;">USD ${itemTotalUSD.toFixed(2)}</span></td>
+                      ${isInvoice ? `<td style="padding: 10px; text-align: right; border-bottom: 1px solid #e2e8f0;">${company.currency || "USD"} ${(item.price * (item.quantity || 1)).toFixed(2)}<br /><span style="font-size: 11px; color: #64748b;">USD ${itemTotalUSD.toFixed(2)}</span></td>` : ""}
                     </tr>
                   `;
                     })
@@ -329,17 +329,19 @@ async function buildEmailHtml(
 
               ${renderAttachmentsSection(proposal)}
 
-              <div class="mobile-total" style="text-align: right; margin-bottom: 22px;">
+              ${isInvoice
+                ? `<div class="mobile-total" style="text-align: right; margin-bottom: 22px;">
                 <div style="font-size: 13px; color: #64748b;">Total</div>
                 <div style="font-size: 24px; font-weight: 700;">${company.currency || "USD"} ${subtotal.toFixed(2)}</div>
                 <div style="font-size: 14px; color: #64748b;">USD ${subtotalUSD.toFixed(2)}</div>
-              </div>
+              </div>`
+                : ""}
 
               
 
               ${actionsHtml}
 
-              ${resolvedPaymentLink ? `
+              ${isInvoice && resolvedPaymentLink ? `
               <div style="margin-bottom: 18px; padding: 16px; background: #f1f5f9; border-radius: 10px; border: 1px solid #cbd5e1;">
                 <div style="font-size: 12px; color: #475569; margin-bottom: 8px;">Payment Link</div>
                 <a href="${resolvedPaymentLink}" target="_blank" rel="noreferrer noopener" style="color: #0f172a; word-break: break-all; text-decoration: underline;">${resolvedPaymentLink}</a>

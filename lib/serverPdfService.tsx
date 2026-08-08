@@ -283,8 +283,6 @@ function InvoiceDocument({ proposal, company, items }: PdfProps) {
 
 function ProposalDocument({ proposal, company, items }: PdfProps) {
   const rows = selectedItems(proposal, items);
-  const currency = company.currency || "USD";
-  const total = rows.reduce((sum, item) => sum + item.price * item.quantity, 0);
   return (
     <Document title={`Proposal - ${proposal.projectTitle}`} author={company.businessName}>
       <Page size="A4" style={styles.page} wrap>
@@ -299,23 +297,18 @@ function ProposalDocument({ proposal, company, items }: PdfProps) {
           <Text style={styles.sectionTitle}>Scope of Work</Text>
           <View style={styles.table}>
             <View style={styles.tableHeader} fixed>
-              <Text style={[styles.cell, styles.tableHeaderText, { width: "31%" }]}>SERVICE</Text>
-              <Text style={[styles.cell, styles.tableHeaderText, { width: "41%" }]}>DELIVERABLES</Text>
+              <Text style={[styles.cell, styles.tableHeaderText, { width: "36%" }]}>SERVICE</Text>
+              <Text style={[styles.cell, styles.tableHeaderText, { width: "56%" }]}>DELIVERABLES</Text>
               <Text style={[styles.cell, styles.tableHeaderText, styles.right, { width: "8%" }]}>QTY</Text>
-              <Text style={[styles.cell, styles.tableHeaderText, styles.right, { width: "20%" }]}>INVESTMENT</Text>
             </View>
             {rows.map((item) => (
               <View key={item.id} style={styles.tableRow} wrap={false}>
-                <Text style={[styles.cell, styles.cellStrong, { width: "31%" }]}>{item.name}</Text>
-                <Text style={[styles.cell, { width: "41%" }]}>{item.description}</Text>
+                <Text style={[styles.cell, styles.cellStrong, { width: "36%" }]}>{item.name}</Text>
+                <Text style={[styles.cell, { width: "56%" }]}>{item.description}</Text>
                 <Text style={[styles.cell, styles.right, { width: "8%" }]}>{item.quantity}</Text>
-                <Text style={[styles.cell, styles.right, { width: "20%" }]}>{money(item.price * item.quantity, currency)}</Text>
               </View>
             ))}
           </View>
-        </View>
-        <View style={styles.summary} wrap={false}>
-          <View style={styles.totalRow}><Text style={styles.totalText}>TOTAL INVESTMENT</Text><Text style={styles.totalText}>{money(total, currency)}</Text></View>
         </View>
         <View style={styles.section} wrap={false}>
           <Text style={styles.sectionTitle}>Project Terms</Text>
