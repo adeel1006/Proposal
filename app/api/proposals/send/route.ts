@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendProposalEmail } from '@/lib/emailService';
+import { generateProfessionalPdfs } from '@/lib/serverPdfService';
 import { formatReadableId, slugifyIdSegment } from '@/lib/readableIds';
 import {
   Proposal,
@@ -9,6 +10,8 @@ import {
   validateProposalAttachments,
 } from '@/app/lib/proposalTypes';
 import { getSupabaseAdminClient } from '@/lib/supabase';
+
+export const runtime = 'nodejs';
 
 function isLocalOrigin(value: string) {
   return value.includes('localhost') || value.includes('127.0.0.1');
@@ -33,16 +36,17 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const appUrl = resolveAppUrl(request);
-    const { customerEmail, customerName, proposal, company, items, paymentLink, proposalId, notesHeading } = body as {
+    const { customerEmail, customerName, proposal, company, items, paymentLink, notesHeading, documentType } = body as {
       customerEmail: string;
       customerName: string;
       proposal: Proposal;
       company: CompanyBranding;
       items: ProposalItem[];
       paymentLink?: string;
-      proposalId?: string;
       notesHeading?: string;
+      documentType?: 'proposal' | 'invoice';
     };
+    const resolvedDocumentType = documentType === 'invoice' ? 'invoice' : 'proposal';
     const resolvedPaymentLink = paymentLink?.trim() || proposal.paymentLink || '';
     const attachmentError = validateProposalAttachments(proposal.attachments);
 
@@ -65,44 +69,36 @@ export async function POST(request: NextRequest) {
       attachments: normalizeProposalAttachments(proposal.attachments),
     };
 
-    let pdfBase64 = body.pdfBase64;
-
-    // If resending, fetch the PDF from the database
-    if (proposalId && !pdfBase64) {
-      const supabase = getSupabaseAdminClient();
-      const { data, error } = await supabase
-        .from('proposals')
-        .select('pdf_base64')
-        .eq('id', proposalId)
-        .single();
-
-      if (error || !data?.pdf_base64) {
-        return NextResponse.json(
-          { success: false, error: 'PDF not found for resend' },
-          { status: 404 }
-        );
-      }
-
-      pdfBase64 = data.pdf_base64;
-    }
-
-    if (!pdfBase64) {
-      return NextResponse.json(
-        { success: false, error: 'PDF not provided' },
-        { status: 400 }
-      );
-    }
+    const pdfItems = Array.isArray(items) && items.length ? items : normalizedProposal.items || [];
+    const { pdfBase64, invoicePdfBase64 } = await generateProfessionalPdfs(
+      normalizedProposal,
+      company,
+      pdfItems,
+    );
 
     try {
       const supabase = getSupabaseAdminClient();
+      let customerCreatedAt: string | null = null;
+      if (proposal.customerId) {
+        const { data: customerRow } = await supabase
+          .from("customers")
+          .select("created_at")
+          .eq("id", proposal.customerId)
+          .maybeSingle();
+        customerCreatedAt = customerRow?.created_at || null;
+      }
       let proposalId = proposal.id?.trim() || '';
+      if (resolvedDocumentType === 'invoice' && proposalId.toLowerCase().startsWith('prop-')) {
+        proposalId = '';
+      }
       if (!proposalId) {
-        const label = proposal.clientName || proposal.projectTitle || 'proposal';
+        const label = proposal.clientName || proposal.projectTitle || resolvedDocumentType;
+        const idPrefix = resolvedDocumentType === 'invoice' ? 'inv' : 'prop';
         const { count } = await supabase
           .from('proposals')
           .select('id', { count: 'exact', head: true })
-          .ilike('id', `prop-${slugifyIdSegment(label)}-%`);
-        proposalId = formatReadableId('prop', label, (count || 0) + 1);
+          .ilike('id', `${idPrefix}-${slugifyIdSegment(label)}-%`);
+        proposalId = formatReadableId(idPrefix, label, (count || 0) + 1);
       }
       await supabase
         .from('proposals')
@@ -125,9 +121,11 @@ export async function POST(request: NextRequest) {
             terms: proposal.terms || {},
             status: 'submitted',
             pdf_base64: pdfBase64,
+            invoice_pdf_base64: invoicePdfBase64,
             submitted_at: new Date().toISOString(),
-            items: items, // Store items
+            items: pdfItems, // Store items
             company: company, // Store company
+            customer_created_at: customerCreatedAt,
           },
           { onConflict: 'id' }
         );
@@ -140,11 +138,11 @@ export async function POST(request: NextRequest) {
       // If SMTP is not configured, return a demo success response for development
       if (process.env.NODE_ENV === 'development') {
         console.log('📧 [DEMO MODE] Email would be sent to:', customerEmail);
-        console.log('📧 [DEMO MODE] Proposal:', proposal.projectTitle);
+        console.log(`📧 [DEMO MODE] ${resolvedDocumentType === 'invoice' ? 'Invoice' : 'Proposal'}:`, proposal.projectTitle);
         console.log('📧 [DEMO MODE] Client:', customerName);
         return NextResponse.json({
           success: true,
-          message: `✅ [DEMO MODE] Proposal ready to send to ${customerEmail}. Configure SMTP in .env.local to send real emails.`,
+          message: `✅ [DEMO MODE] ${resolvedDocumentType === 'invoice' ? 'Invoice' : 'Proposal'} ready to send to ${customerEmail}. Configure SMTP in .env.local to send real emails.`,
         });
       }
 
@@ -159,23 +157,26 @@ export async function POST(request: NextRequest) {
       customerName,
       normalizedProposal,
       company,
-      items,
+      pdfItems,
       resolvedPaymentLink || undefined,
       {
         appUrl,
         notesHeading,
+        pdfBase64,
+        invoicePdfBase64,
+        documentType: resolvedDocumentType,
       },
     );
 
     return NextResponse.json({
       success: true,
-      message: `Proposal sent to ${customerEmail}`,
+      message: `${resolvedDocumentType === 'invoice' ? 'Invoice' : 'Proposal'} sent to ${customerEmail}`,
     });
   } catch (error) {
-    console.error('Error sending proposal:', error);
+    console.error('Error sending document:', error);
     
     // Provide helpful error messages
-    let errorMessage = 'Failed to send proposal';
+    let errorMessage = 'Failed to send document';
     
     if (error instanceof Error) {
       if (error.message.includes('Username and Password not accepted') || error.message.includes('EAUTH')) {

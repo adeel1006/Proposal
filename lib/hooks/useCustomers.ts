@@ -12,9 +12,26 @@ type CustomerProposalHistory = {
   submittedAt: string;
 };
 
+type CustomerRequestOptions = {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+};
+
+type CustomerResponse = {
+  data?: Customer[];
+  error?: string;
+  meta?: {
+    totalCount?: number;
+  };
+};
+
 const CUSTOMERS_CACHE_TTL_MS = 60 * 1000;
-const customersCache = new Map<string, { at: number; data: Customer[] }>();
-const customersInFlight = new Map<string, Promise<Customer[]>>();
+const customersCache = new Map<
+  string,
+  { at: number; data: Customer[]; totalCount: number }
+>();
+const customersInFlight = new Map<string, Promise<{ data: Customer[]; totalCount: number }>>();
 
 async function readJsonResponse<T>(response: Response): Promise<T> {
   const contentType = response.headers.get("content-type") || "";
@@ -32,24 +49,43 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
   }
 }
 
-async function requestCustomers(companyId?: string): Promise<Customer[]> {
+function buildCustomersCacheKey(companyId?: string, options?: CustomerRequestOptions) {
+  return JSON.stringify({
+    companyId: companyId || "",
+    page: options?.page || 0,
+    pageSize: options?.pageSize || 0,
+    search: options?.search?.trim() || "",
+  });
+}
+
+async function requestCustomers(
+  companyId?: string,
+  options: CustomerRequestOptions = {},
+): Promise<{ data: Customer[]; totalCount: number }> {
   const params = new URLSearchParams();
   if (companyId) {
     params.set("companyId", companyId);
+  }
+  if (typeof options.page === "number") {
+    params.set("page", String(options.page));
+  }
+  if (typeof options.pageSize === "number") {
+    params.set("pageSize", String(options.pageSize));
+  }
+  if (options.search?.trim()) {
+    params.set("search", options.search.trim());
   }
 
   const response = await fetch(
     `/api/customers${params.toString() ? `?${params.toString()}` : ""}`,
   );
-  const result = await readJsonResponse<{ data?: Customer[]; error?: string }>(
-    response,
-  );
+  const result = await readJsonResponse<CustomerResponse>(response);
 
   if (!response.ok) {
     throw new Error(result.error || "Failed to fetch customers");
   }
 
-  return (result.data || []).map((customer) => ({
+  const customers = (result.data || []).map((customer) => ({
     ...customer,
     companyId: customer.companyId || "",
     name: customer.name || "",
@@ -59,31 +95,34 @@ async function requestCustomers(companyId?: string): Promise<Customer[]> {
     requiredService: customer.requiredService || "",
     notes: customer.notes || "",
   }));
+
+  return {
+    data: customers,
+    totalCount: result.meta?.totalCount ?? customers.length,
+  };
 }
 
-function getCacheKey(companyId?: string) {
-  return companyId || "all";
+function invalidateCustomerCaches() {
+  customersCache.clear();
+  customersInFlight.clear();
 }
 
-function invalidateCustomerCaches(customer?: Customer) {
-  if (!customer) {
-    customersCache.clear();
-    return;
-  }
-
-  customersCache.delete("all");
-  customersCache.delete(getCacheKey(customer.companyId));
-}
-
-export function useCustomers(companyId?: string, options: { autoFetch?: boolean } = {}) {
+export function useCustomers(
+  companyId?: string,
+  options: CustomerRequestOptions & { autoFetch?: boolean } = {},
+) {
   const { autoFetch = true } = options;
+  const page = options.page;
+  const pageSize = options.pageSize;
+  const search = options.search?.trim() || "";
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(autoFetch);
   const [error, setError] = useState<string | null>(null);
 
   const fetchCustomers = useCallback(
     async (opts?: { force?: boolean; silent?: boolean }) => {
-      const cacheKey = getCacheKey(companyId);
+      const cacheKey = buildCustomersCacheKey(companyId, { page, pageSize, search });
       const cached = customersCache.get(cacheKey);
       const force = Boolean(opts?.force);
       const silent = Boolean(opts?.silent);
@@ -92,6 +131,7 @@ export function useCustomers(companyId?: string, options: { autoFetch?: boolean 
 
       if (hasFreshCache) {
         setCustomers(cached.data);
+        setTotalCount(cached.totalCount);
         setLoading(false);
         return cached.data;
       }
@@ -103,24 +143,25 @@ export function useCustomers(companyId?: string, options: { autoFetch?: boolean 
 
       try {
         if (!customersInFlight.has(cacheKey)) {
-          customersInFlight.set(cacheKey, requestCustomers(companyId));
+          customersInFlight.set(cacheKey, requestCustomers(companyId, { page, pageSize, search }));
         }
 
-        const data = await customersInFlight.get(cacheKey)!;
-        customersCache.set(cacheKey, { at: Date.now(), data });
-        setCustomers(data);
-        return data;
+        const result = await customersInFlight.get(cacheKey)!;
+        customersCache.set(cacheKey, { at: Date.now(), data: result.data, totalCount: result.totalCount });
+        setCustomers(result.data);
+        setTotalCount(result.totalCount);
+        return result.data;
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
         setError(message);
         console.error("Failed to fetch customers:", err);
         throw err;
-      } finally {
-        customersInFlight.delete(cacheKey);
-        setLoading(false);
-      }
+    } finally {
+      customersInFlight.delete(cacheKey);
+      setLoading(false);
+    }
     },
-    [companyId],
+    [companyId, page, pageSize, search],
   );
 
   const createCustomer = useCallback(async (customer: Omit<Customer, "id"> & { id?: string }) => {
@@ -140,7 +181,7 @@ export function useCustomers(companyId?: string, options: { autoFetch?: boolean 
         throw new Error(result.error || "Failed to create customer");
       }
 
-      invalidateCustomerCaches(result.data);
+      invalidateCustomerCaches();
       setCustomers((prev) => {
         if (companyId && result.data!.companyId !== companyId) {
           return prev;
@@ -173,7 +214,7 @@ export function useCustomers(companyId?: string, options: { autoFetch?: boolean 
         throw new Error(result.error || "Failed to update customer");
       }
 
-      invalidateCustomerCaches(result.data);
+      invalidateCustomerCaches();
       setCustomers((prev) =>
         prev.map((item) => (item.id === result.data!.id ? result.data! : item)),
       );
@@ -198,7 +239,7 @@ export function useCustomers(companyId?: string, options: { autoFetch?: boolean 
         throw new Error(result.error || "Failed to delete customer");
       }
 
-      customersCache.clear();
+      invalidateCustomerCaches();
       setCustomers((prev) => prev.filter((item) => item.id !== id));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -241,6 +282,7 @@ export function useCustomers(companyId?: string, options: { autoFetch?: boolean 
     loading,
     error,
     fetchCustomers,
+    totalCount,
     createCustomer,
     updateCustomer,
     deleteCustomer,

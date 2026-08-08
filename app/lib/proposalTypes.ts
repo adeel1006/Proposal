@@ -40,6 +40,9 @@ export interface Customer {
   notes?: string;
   createdAt?: string;
   updatedAt?: string;
+  proposalStatus?: "sent" | "not_sent";
+  proposalCount?: number;
+  lastProposalSentAt?: string;
 }
 
 export interface ProposalItem {

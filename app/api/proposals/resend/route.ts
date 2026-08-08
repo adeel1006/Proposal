@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendProposalEmail } from '@/lib/emailService';
+import { generateProfessionalPdfs } from '@/lib/serverPdfService';
 import { getSupabaseAdminClient } from '@/lib/supabase';
 import {
   normalizeProposalAttachments,
@@ -7,6 +8,8 @@ import {
   type ProposalItem,
   type CompanyBranding,
 } from '@/app/lib/proposalTypes';
+
+export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
   try {
@@ -80,18 +83,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (resolvedPaymentLink !== proposalData.payment_link) {
-      const { error: updatePaymentLinkError } = await supabase
-        .from('proposals')
-        .update({ payment_link: resolvedPaymentLink })
-        .eq('id', proposalId);
+    const { pdfBase64, invoicePdfBase64 } = await generateProfessionalPdfs(
+      proposal,
+      company,
+      items,
+    );
 
-      if (updatePaymentLinkError) {
-        return NextResponse.json(
-          { success: false, error: updatePaymentLinkError.message },
-          { status: 500 }
-        );
-      }
+    const { error: updatePdfError } = await supabase
+      .from('proposals')
+      .update({
+        payment_link: resolvedPaymentLink,
+        pdf_base64: pdfBase64,
+        invoice_pdf_base64: invoicePdfBase64,
+      })
+      .eq('id', proposalId);
+
+    if (updatePdfError) {
+      return NextResponse.json(
+        { success: false, error: updatePdfError.message },
+        { status: 500 }
+      );
     }
 
     // Check if SMTP is configured
@@ -120,7 +131,11 @@ export async function POST(request: NextRequest) {
       proposal,
       company,
       items,
-      resolvedPaymentLink
+      resolvedPaymentLink,
+      {
+        pdfBase64,
+        invoicePdfBase64,
+      }
     );
 
     return NextResponse.json({

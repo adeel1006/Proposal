@@ -3,9 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { generateProposalHTML } from "@/lib/clientPdfService";
 import {
-  CompanyBranding,
   DEFAULT_TERMS,
   Proposal,
   ProposalItem,
@@ -24,15 +22,7 @@ type GenerateResponse = {
   error?: string;
 };
 
-type AIProvider = "openai" | "gemini";
-
-type Html2PdfInstance = {
-  set: (options: Record<string, unknown>) => Html2PdfInstance;
-  from: (element: HTMLElement) => Html2PdfInstance;
-  outputPdf: (outputType: "dataurlstring") => Promise<string>;
-};
-
-type Html2PdfFactory = () => Html2PdfInstance;
+type AIProvider = "openai" | "gemini" | "mistral";
 
 type PromptPresetId =
   | "web-design"
@@ -348,10 +338,17 @@ export default function AiProposalPage() {
       return;
     }
 
+    const providerLabel =
+      provider === "openai"
+        ? "OpenAI"
+        : provider === "gemini"
+          ? "Gemini"
+          : "Mistral";
+
     setIsGenerating(true);
     setMessage({
       type: "info",
-      text: `Generating proposal draft with ${provider === "openai" ? "OpenAI" : "Gemini"}...`,
+      text: `Generating proposal draft with ${providerLabel}...`,
     });
 
     try {
@@ -463,73 +460,6 @@ export default function AiProposalPage() {
     return result.data;
   };
 
-  const generateProposalPdf = async (
-    proposal: Proposal,
-    company: CompanyBranding,
-  ) => {
-    const html2pdf = (window as Window & { html2pdf?: Html2PdfFactory })
-      .html2pdf;
-
-    if (!html2pdf) {
-      throw new Error(
-        "PDF library not loaded. Please refresh the page and try again.",
-      );
-    }
-
-    const selectedItems = proposal.items
-      .filter((item) => proposal.selectedItems.includes(item.id))
-      .map((item) => ({
-        ...item,
-        quantity: item.quantity || 1,
-      }));
-
-    const htmlContent = generateProposalHTML(proposal, company, selectedItems);
-    const element = document.createElement("div");
-    element.innerHTML = htmlContent;
-
-    const pdfBase64 = await new Promise<string>((resolve, reject) => {
-      let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-      try {
-        timeoutId = setTimeout(() => {
-          reject(new Error("PDF generation timeout. Please try again."));
-        }, 30000);
-
-        html2pdf()
-          .set({
-            margin: 10,
-            filename: `${proposal.projectTitle || "proposal"}.pdf`,
-            image: { type: "jpeg", quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true, logging: false },
-            jsPDF: { orientation: "portrait", unit: "mm", format: "a4" },
-            pagebreak: { mode: ["avoid-all", "css", "legacy"] },
-          })
-          .from(element)
-          .outputPdf("dataurlstring")
-          .then((pdf: string) => {
-            if (timeoutId) clearTimeout(timeoutId);
-            const base64 = pdf.replace(/^data:application\/pdf;base64,/, "");
-            if (!base64) {
-              throw new Error("Failed to convert PDF to base64.");
-            }
-            resolve(base64);
-          })
-          .catch((error: unknown) => {
-            if (timeoutId) clearTimeout(timeoutId);
-            reject(error);
-          });
-      } catch (error) {
-        if (timeoutId) clearTimeout(timeoutId);
-        reject(error);
-      }
-    });
-
-    return {
-      pdfBase64,
-      selectedItems,
-    };
-  };
-
   const handleSendProposal = async () => {
     if (!generatedProposal || !selectedCompany) {
       setTimedMessage({
@@ -575,9 +505,8 @@ export default function AiProposalPage() {
 
       setGeneratedProposal(proposalToSend);
 
-      const { pdfBase64, selectedItems } = await generateProposalPdf(
-        proposalToSend,
-        selectedCompany,
+      const selectedItems = proposalToSend.items.filter((item) =>
+        proposalToSend.selectedItems.includes(item.id),
       );
 
       const response = await fetch("/api/proposals/send", {
@@ -589,9 +518,9 @@ export default function AiProposalPage() {
           proposal: proposalToSend,
           company: selectedCompany,
           items: selectedItems,
-          pdfBase64,
           paymentLink: proposalToSend.paymentLink || "",
           notesHeading: "Proposal",
+          documentType: "proposal",
         }),
       });
 
@@ -815,6 +744,7 @@ export default function AiProposalPage() {
                   >
                     <option value="openai">OpenAI</option>
                     <option value="gemini">Gemini</option>
+                    <option value="mistral">Mistral</option>
                   </select>
                 </div>
 

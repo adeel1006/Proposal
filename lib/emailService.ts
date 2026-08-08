@@ -7,6 +7,7 @@ import {
   type CompanyBranding,
 } from "@/app/lib/proposalTypes";
 import { currencyService } from "@/lib/currencyService";
+import { normalizePdfBase64 } from "@/lib/pdfUtils";
 
 const DEFAULT_PAYMENT_LINK = "https://www.paypal.com/paypalme/atozadvert";
 
@@ -121,6 +122,32 @@ function resolveLogo(company: CompanyBranding) {
   };
 }
 
+function decodePdfBase64(value: string) {
+  return Buffer.from(normalizePdfBase64(value), "base64");
+}
+
+function pdfAttachment(
+  proposal: Proposal,
+  pdfBase64: string | undefined,
+  filenamePrefix: string,
+): Attachment | null {
+  if (!pdfBase64) {
+    return null;
+  }
+
+  const fileStem = (proposal.projectTitle || "proposal")
+    .replace(/[^a-zA-Z0-9-_ ]/g, "")
+    .trim()
+    .replace(/\s+/g, "_") || "proposal";
+
+  return {
+    filename: `${filenamePrefix}-${fileStem}.pdf`,
+    content: decodePdfBase64(pdfBase64),
+    contentType: "application/pdf",
+    contentDisposition: "attachment",
+  };
+}
+
 async function buildEmailHtml(
   customerName: string,
   customerEmail: string,
@@ -131,8 +158,10 @@ async function buildEmailHtml(
   logoSrc: string,
   paymentLink?: string,
   appUrl?: string,
-  notesHeading?: string
+  notesHeading?: string,
+  documentType: "proposal" | "invoice" = "proposal",
 ) {
+  const isInvoice = documentType === "invoice";
   const resolvedPaymentLink = paymentLink?.trim() || DEFAULT_PAYMENT_LINK;
   const subtotalUSD = await currencyService.convertToUSD(subtotal, company.currency || 'USD');
   const query = `proposalId=${encodeURIComponent(proposal.id)}&email=${encodeURIComponent(customerEmail)}`;
@@ -140,12 +169,32 @@ async function buildEmailHtml(
   const resolvedAppUrl = appUrl || process.env.APP_URL || "http://localhost:3000";
   const acceptLink = `${resolvedAppUrl}/api/proposals/accept?${query}${paymentQuery}`;
   const declineLink = `${resolvedAppUrl}/api/proposals/decline?${query}`;
+  const documentLabel = isInvoice ? "Invoice" : "Proposal";
+  const documentTitle = isInvoice ? "Project Invoice" : "Project Proposal";
+  const introCopy = isInvoice
+    ? `Please find your invoice for <strong>${proposal.projectTitle}</strong>. The selected services and invoice total are included below, and the invoice PDF is attached for your records.`
+    : `Please review your proposal for <strong>${proposal.projectTitle}</strong>. You can accept and continue to payment, or decline. Details of the proposal are included below. If you have any questions, feel free to reply to this email.`;
+  const actionsHtml = isInvoice
+    ? ""
+    : `
+              <table style="width: 100%; margin-bottom: 8px;">
+                <tr>
+                  <td class="action-cell" style="padding: 8px 0; text-align: left;">
+                    <a href="${acceptLink}" class="action-button" style="display: inline-block; padding: 10px 16px; background: #059669; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600;">Accept and Pay</a>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="action-cell" style="padding: 0 0 8px 0; text-align: left;">
+                    <a href="${declineLink}" class="action-button" style="display: inline-block; padding: 10px 16px; background: #dc2626; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600;">Decline</a>
+                  </td>
+                </tr>
+              </table>`;
   return `
     <html>
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Proposal</title>
+        <title>${documentLabel}</title>
         <style>
           @media only screen and (max-width: 600px) {
             .email-shell {
@@ -220,7 +269,7 @@ async function buildEmailHtml(
           <tr>
             <td class="email-header" style="padding: 28px; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #ffffff;">
               ${logoSrc ? `<img src="${logoSrc}" alt="${company.businessName} logo" style="max-height: 64px; max-width: 180px; display: block; margin-bottom: 14px;" />` : ""}
-              <h1 style="margin: 0; font-size: 28px; line-height: 1.2;">Project Proposal</h1>
+              <h1 style="margin: 0; font-size: 28px; line-height: 1.2;">${documentTitle}</h1>
               <p style="margin: 8px 0 0 0; opacity: 0.92;">${company.businessName}</p>
             </td>
           </tr>
@@ -228,13 +277,13 @@ async function buildEmailHtml(
             <td class="email-body" style="padding: 28px;">
               <p style="margin: 0 0 14px 0;">Hello ${customerName},</p>
               <p style="margin: 0 0 20px 0; color: #334155;">
-                Please review your proposal for <strong>${proposal.projectTitle}</strong>. You can accept and continue to payment, or decline. Details of the proposal are included below. If you have any questions, feel free to reply to this email.
+                ${introCopy}
               </p>
 
               <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; margin-bottom: 20px;">
                 <tr>
                   <td class="summary-cell" style="padding: 14px 16px; width: 33.33%; vertical-align: top;">
-                    <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">Proposal ID</div>
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">${documentLabel} ID</div>
                     <div style="font-size: 14px; font-weight: 600; word-break: break-word;">${proposal.id}</div>
                   </td>
                   <td class="summary-cell" style="padding: 14px 16px; width: 33.33%; vertical-align: top;">
@@ -288,18 +337,7 @@ async function buildEmailHtml(
 
               
 
-              <table style="width: 100%; margin-bottom: 8px;">
-                <tr>
-                  <td class="action-cell" style="padding: 8px 0; text-align: left;">
-                    <a href="${acceptLink}" class="action-button" style="display: inline-block; padding: 10px 16px; background: #059669; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600;">Accept and Pay</a>
-                  </td>
-                </tr>
-                <tr>
-                  <td class="action-cell" style="padding: 0 0 8px 0; text-align: left;">
-                    <a href="${declineLink}" class="action-button" style="display: inline-block; padding: 10px 16px; background: #dc2626; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600;">Decline</a>
-                  </td>
-                </tr>
-              </table>
+              ${actionsHtml}
 
               ${resolvedPaymentLink ? `
               <div style="margin-bottom: 18px; padding: 16px; background: #f1f5f9; border-radius: 10px; border: 1px solid #cbd5e1;">
@@ -335,8 +373,12 @@ export async function sendProposalEmail(
     forceReplyTo?: string;
     appUrl?: string;
     notesHeading?: string;
+    pdfBase64?: string;
+    invoicePdfBase64?: string;
+    documentType?: "proposal" | "invoice";
   }
 ) {
+  const documentType = options?.documentType || "proposal";
   const selectedItems = items.filter((item) => proposal.selectedItems.includes(item.id));
   const subtotal = selectedItems.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0);
   const { logoSrc, logoAttachment } = resolveLogo(company);
@@ -350,13 +392,23 @@ export async function sendProposalEmail(
     logoSrc,
     paymentLink,
     options?.appUrl,
-    options?.notesHeading
+    options?.notesHeading,
+    documentType,
   );
 
   const attachments: Attachment[] = [];
 
   if (logoAttachment) {
     attachments.push(logoAttachment);
+  }
+
+  const invoiceAttachment = pdfAttachment(proposal, options?.invoicePdfBase64, "invoice");
+  const proposalAttachment = pdfAttachment(proposal, options?.pdfBase64, "proposal");
+  if (documentType === "invoice" && invoiceAttachment) {
+    attachments.push(invoiceAttachment);
+  }
+  if (documentType === "proposal" && proposalAttachment) {
+    attachments.push(proposalAttachment);
   }
 
   // Dynamic company-based sender configuration
@@ -373,7 +425,7 @@ export async function sendProposalEmail(
     from: fromAddress,
     to: customerEmail,
     replyTo: replyToEmail || smtpUser, // Clients reply goes to company email
-    subject: `Proposal: ${proposal.projectTitle} - ${company.businessName}`,
+    subject: `${documentType === "invoice" ? "Invoice" : "Proposal"}: ${proposal.projectTitle} - ${company.businessName}`,
     html: emailBody,
     attachments,
   };

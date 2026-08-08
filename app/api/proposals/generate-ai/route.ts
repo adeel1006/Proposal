@@ -16,7 +16,7 @@ type GenerateProposalPayload = {
   customer: Customer;
   agencyTone: string;
   scopeLimitations: string;
-  provider?: "openai" | "gemini";
+  provider?: "openai" | "gemini" | "mistral";
 };
 
 type GeneratedProposal = {
@@ -68,6 +68,22 @@ type OpenAIResponsesApiResponse = {
       text?: string;
       refusal?: string;
     }>;
+  }>;
+};
+
+type MistralChatCompletionsResponse = {
+  error?: {
+    message?: string;
+    code?: string | number;
+    type?: string;
+  };
+  choices?: Array<{
+    message?: {
+      content?: string | Array<{
+        type?: string;
+        text?: string;
+      }>;
+    };
   }>;
 };
 
@@ -644,22 +660,91 @@ function trimList(items: string[], maxItems: number, maxLength: number) {
     .slice(0, maxItems);
 }
 
+function safeText(value: unknown) {
+  return typeof value === "string"
+    ? value
+    : typeof value === "number" || typeof value === "boolean" || typeof value === "bigint"
+      ? String(value)
+      : "";
+}
+
+function safeTextArray(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => safeText(item)).filter(Boolean) : [];
+}
+
+function nonEmptyString(value: unknown) {
+  const text = safeText(value).trim();
+  return text.length > 0 ? text : "";
+}
+
+function fillList(primary: unknown, fallback: string[], minCount: number) {
+  const primaryList = safeTextArray(primary);
+  if (primaryList.length >= minCount) {
+    return primaryList;
+  }
+
+  const merged: string[] = [...primaryList];
+  for (const item of fallback) {
+    if (merged.length >= minCount) {
+      break;
+    }
+
+    const candidate = nonEmptyString(item);
+    if (candidate && !merged.includes(candidate)) {
+      merged.push(candidate);
+    }
+  }
+
+  return merged.slice(0, Math.max(minCount, merged.length));
+}
+
+function mergeGeneratedProposal(
+  primary: GeneratedProposal,
+  fallback: GeneratedProposal,
+): GeneratedProposal {
+  return {
+    projectTitle: nonEmptyString(primary.projectTitle) || fallback.projectTitle,
+    projectDescription:
+      nonEmptyString(primary.projectDescription) || fallback.projectDescription,
+    introduction: nonEmptyString(primary.introduction) || fallback.introduction,
+    businessUnderstanding:
+      nonEmptyString(primary.businessUnderstanding) || fallback.businessUnderstanding,
+    problemsOrOpportunities: fillList(
+      primary.problemsOrOpportunities,
+      fallback.problemsOrOpportunities,
+      2,
+    ),
+    proposedSolutions: fillList(
+      primary.proposedSolutions,
+      fallback.proposedSolutions,
+      2,
+    ),
+    scopeOfWork: fillList(primary.scopeOfWork, fallback.scopeOfWork, 2),
+    closingStatement:
+      nonEmptyString(primary.closingStatement) || fallback.closingStatement,
+    websiteSummary: nonEmptyString(primary.websiteSummary) || fallback.websiteSummary,
+    websiteFindings: fillList(primary.websiteFindings, fallback.websiteFindings, 2),
+    keywordTargets: fillList(primary.keywordTargets, fallback.keywordTargets, 3),
+    confidenceNotes: fillList(primary.confidenceNotes, fallback.confidenceNotes, 1),
+  };
+}
+
 function sanitizeGeneratedProposal(
   generated: GeneratedProposal,
 ): GeneratedProposal {
   return {
-    projectTitle: removeEmDashes(generated.projectTitle || ""),
-    projectDescription: removeEmDashes(generated.projectDescription || ""),
-    introduction: removeEmDashes(generated.introduction || ""),
-    businessUnderstanding: removeEmDashes(generated.businessUnderstanding || ""),
-    problemsOrOpportunities: (generated.problemsOrOpportunities || []).map(removeEmDashes),
-    proposedSolutions: (generated.proposedSolutions || []).map(removeEmDashes),
-    scopeOfWork: (generated.scopeOfWork || []).map(removeEmDashes),
-    closingStatement: removeEmDashes(generated.closingStatement || ""),
-    websiteSummary: removeEmDashes(generated.websiteSummary || ""),
-    websiteFindings: (generated.websiteFindings || []).map(removeEmDashes),
-    keywordTargets: (generated.keywordTargets || []).map(removeEmDashes),
-    confidenceNotes: (generated.confidenceNotes || []).map(removeEmDashes),
+    projectTitle: removeEmDashes(safeText(generated.projectTitle)),
+    projectDescription: removeEmDashes(safeText(generated.projectDescription)),
+    introduction: removeEmDashes(safeText(generated.introduction)),
+    businessUnderstanding: removeEmDashes(safeText(generated.businessUnderstanding)),
+    problemsOrOpportunities: safeTextArray(generated.problemsOrOpportunities).map(removeEmDashes),
+    proposedSolutions: safeTextArray(generated.proposedSolutions).map(removeEmDashes),
+    scopeOfWork: safeTextArray(generated.scopeOfWork).map(removeEmDashes),
+    closingStatement: removeEmDashes(safeText(generated.closingStatement)),
+    websiteSummary: removeEmDashes(safeText(generated.websiteSummary)),
+    websiteFindings: safeTextArray(generated.websiteFindings).map(removeEmDashes),
+    keywordTargets: safeTextArray(generated.keywordTargets).map(removeEmDashes),
+    confidenceNotes: safeTextArray(generated.confidenceNotes).map(removeEmDashes),
   };
 }
 
@@ -761,6 +846,21 @@ function getOpenAIOutputText(response: OpenAIResponsesApiResponse) {
   );
 }
 
+function getMistralOutputText(response: MistralChatCompletionsResponse) {
+  const content = response.choices?.[0]?.message?.content;
+
+  if (typeof content === "string") {
+    return content;
+  }
+
+  return (
+    content
+      ?.map((part) => part.text || "")
+      .filter(Boolean)
+      .join("\n") || ""
+  );
+}
+
 async function callOpenAIResponses({
   apiKey,
   model,
@@ -818,6 +918,60 @@ async function callOpenAIResponses({
   if (rawBody.trim()) {
     try {
       data = JSON.parse(rawBody) as OpenAIResponsesApiResponse;
+    } catch {
+      data = {
+        error: {
+          message: rawBody.slice(0, 1000),
+        },
+      };
+    }
+  }
+
+  return { response, data, rawBody };
+}
+
+async function callMistralChatCompletions({
+  apiKey,
+  model,
+  prompt,
+}: {
+  apiKey: string;
+  model: string;
+  prompt: string;
+}) {
+  const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You write short, persuasive agency proposals and must return one valid JSON object only. Fill every field in the schema. Do not leave projectTitle, projectDescription, introduction, businessUnderstanding, closingStatement, or websiteSummary empty. problemsOrOpportunities, proposedSolutions, and scopeOfWork must each contain exactly 2 short items. websiteFindings must contain 2 to 3 short items. keywordTargets should contain 3 to 5 short items when relevant. confidenceNotes must contain 1 to 2 short items. Keep the language concise and complete.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      response_format: {
+        type: "json_object",
+      },
+      temperature: 0,
+      max_tokens: 2200,
+    }),
+  });
+
+  const rawBody = await response.text();
+  let data: MistralChatCompletionsResponse | null = null;
+
+  if (rawBody.trim()) {
+    try {
+      data = JSON.parse(rawBody) as MistralChatCompletionsResponse;
     } catch {
       data = {
         error: {
@@ -1128,7 +1282,7 @@ export async function POST(request: NextRequest) {
           },
         });
       }
-    } else {
+    } else if (provider === "gemini") {
       const apiKey =
         process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_STUDIO_API_KEY;
       if (!apiKey) {
@@ -1259,6 +1413,122 @@ export async function POST(request: NextRequest) {
       } else {
         outputText = getResponseText(data);
       }
+    } else if (provider === "mistral") {
+      const apiKey = process.env.MISTRAL_API_KEY;
+      if (!apiKey) {
+        return NextResponse.json(
+          { error: "Missing MISTRAL_API_KEY in environment variables" },
+          { status: 500 },
+        );
+      }
+
+      const model = process.env.MISTRAL_MODEL || "mistral-large-latest";
+      let response: Response | null = null;
+      let data: MistralChatCompletionsResponse | null = null;
+      let lastError: MistralChatCompletionsResponse | null = null;
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const result = await callMistralChatCompletions({
+          apiKey,
+          model,
+          prompt,
+        });
+
+        response = result.response;
+        data = result.data;
+        lastRawBody = result.rawBody;
+
+        if (response.ok) {
+          break;
+        }
+
+        lastError = data;
+        upstreamStatus = response.status;
+        const shouldRetry =
+          upstreamStatus === 429 ||
+          upstreamStatus === 503 ||
+          upstreamStatus === 504;
+
+        if (!shouldRetry || attempt === 2) {
+          break;
+        }
+
+        await wait(500 * 2 ** attempt);
+      }
+
+      if (!response || !data) {
+        return NextResponse.json(
+          { error: "AI proposal generation failed before receiving a response" },
+          { status: 500 },
+        );
+      }
+
+      upstreamStatus = response.status;
+      upstreamMessage =
+        data.error?.message ||
+        lastError?.error?.message ||
+        lastRawBody.slice(0, 1000) ||
+        "Mistral proposal generation failed";
+      upstreamCode = data.error?.code || lastError?.error?.code;
+      upstreamReason = data.error?.type || lastError?.error?.type;
+
+      if (!response.ok) {
+        if (
+          upstreamStatus === 429 ||
+          upstreamStatus === 503 ||
+          upstreamStatus === 504
+        ) {
+          console.warn(
+            `[AI proposal] Mistral unavailable (${upstreamStatus}) after retries. Falling back to a local draft.`,
+            {
+              model,
+              upstreamReason,
+              upstreamMessage,
+            },
+          );
+
+          const generated = shortenGeneratedProposal(
+            buildFallbackGeneratedProposal({
+              company,
+              customer,
+              selectedServices,
+              websiteOverview,
+              seoKeywordHints,
+              websiteFindings,
+            }),
+          );
+          const notes = formatGeneratedNotes(generated);
+          const draft = {
+            ...proposal,
+            projectTitle: generated.projectTitle,
+            projectDescription: generated.projectDescription,
+            notes,
+            updatedAt: new Date().toISOString(),
+          };
+
+          const draftResult = await saveGeneratedDraft(draft, company, generated);
+          if (draftResult.error) {
+            return NextResponse.json(
+              { error: draftResult.error.message },
+              { status: 500 },
+            );
+          }
+
+          return NextResponse.json({
+            success: true,
+            data: {
+              proposal: draft,
+              generated,
+              websiteFetchNote: websiteOverview.fetchNote,
+              generationMode: "fallback",
+              warning:
+                "Mistral was temporarily unavailable, so a shorter local draft was generated from the saved data instead.",
+            },
+          });
+        }
+      } else {
+        outputText = getMistralOutputText(data);
+      }
     }
 
     if (!outputText) {
@@ -1274,8 +1544,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const fallbackGenerated = shortenGeneratedProposal(
+      buildFallbackGeneratedProposal({
+        company,
+        customer,
+        selectedServices,
+        websiteOverview,
+        seoKeywordHints,
+        websiteFindings,
+      }),
+    );
     const generated = shortenGeneratedProposal(
-      sanitizeGeneratedProposal(JSON.parse(outputText) as GeneratedProposal),
+      mergeGeneratedProposal(
+        sanitizeGeneratedProposal(JSON.parse(outputText) as GeneratedProposal),
+        fallbackGenerated,
+      ),
     );
     const notes = formatGeneratedNotes(generated);
     const draft = {

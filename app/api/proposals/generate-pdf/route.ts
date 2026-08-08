@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { normalizePdfBase64 } from "@/lib/pdfUtils";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 
 export async function GET(request: NextRequest) {
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
       console.log(`PDF downloaded for proposal ${proposalId} by ${customerEmail}`);
     }
 
-    const pdfBuffer = Buffer.from(data.pdf_base64, "base64");
+    const pdfBuffer = Buffer.from(normalizePdfBase64(data.pdf_base64), "base64");
     const fileName = `${data.project_title || "proposal"}.pdf`
       .replace(/[^a-zA-Z0-9-_ ]/g, "")
       .replace(/\s+/g, "_");

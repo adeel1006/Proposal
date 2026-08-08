@@ -3,8 +3,16 @@ import { Customer } from "@/app/lib/proposalTypes";
 import { formatReadableId, slugifyIdSegment } from "@/lib/readableIds";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 
-type CustomerPayload = Omit<Customer, "createdAt" | "updatedAt"> & {
+type CustomerPayload = Omit<
+  Customer,
+  "createdAt" | "updatedAt" | "proposalStatus" | "proposalCount" | "lastProposalSentAt"
+> & {
   id?: string;
+};
+
+type ProposalSummary = {
+  count: number;
+  lastSentAt: string;
 };
 
 type CustomerRow = {
@@ -32,12 +40,18 @@ type ProposalHistoryRow = {
   created_at?: string | null;
 };
 
+type ProposalSummaryRow = {
+  customer_id: string | null;
+  submitted_at: string | null;
+  created_at: string | null;
+};
+
 function normalizeOptionalText(value?: string | null) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
 }
 
-function toCustomer(row: CustomerRow): Customer {
+function toCustomer(row: CustomerRow, proposalSummary?: ProposalSummary): Customer {
   return {
     id: row.id,
     companyId: row.company_id || "",
@@ -49,7 +63,42 @@ function toCustomer(row: CustomerRow): Customer {
     notes: row.notes || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    proposalStatus: proposalSummary?.count ? "sent" : "not_sent",
+    proposalCount: proposalSummary?.count || 0,
+    lastProposalSentAt: proposalSummary?.lastSentAt || "",
   };
+}
+
+function getLatestDate(current: string, next?: string | null) {
+  if (!next) {
+    return current;
+  }
+
+  if (!current) {
+    return next;
+  }
+
+  return new Date(next).getTime() > new Date(current).getTime() ? next : current;
+}
+
+function summarizeProposalRows(rows: ProposalSummaryRow[]) {
+  return rows.reduce((summaryMap, row) => {
+    if (!row.customer_id) {
+      return summaryMap;
+    }
+
+    const existing = summaryMap.get(row.customer_id) || {
+      count: 0,
+      lastSentAt: "",
+    };
+    existing.count += 1;
+    existing.lastSentAt = getLatestDate(
+      existing.lastSentAt,
+      row.submitted_at || row.created_at,
+    );
+    summaryMap.set(row.customer_id, existing);
+    return summaryMap;
+  }, new Map<string, ProposalSummary>());
 }
 
 function toProposalHistory(row: ProposalHistoryRow) {
@@ -71,6 +120,13 @@ export async function GET(request: NextRequest) {
     const id = searchParams.get("id");
     const companyId = searchParams.get("companyId");
     const search = searchParams.get("search")?.trim();
+    const pageParam = Number.parseInt(searchParams.get("page") || "", 10);
+    const pageSizeParam = Number.parseInt(searchParams.get("pageSize") || "", 10);
+    const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
+    const pageSize =
+      Number.isFinite(pageSizeParam) && pageSizeParam > 0
+        ? Math.min(pageSizeParam, 100)
+        : null;
     const includeProposals = searchParams.get("includeProposals") === "true";
 
     const supabase = getSupabaseAdminClient();
@@ -108,17 +164,54 @@ export async function GET(request: NextRequest) {
         );
       }
 
-    return NextResponse.json({
-      success: true,
-      data: toCustomer(data as CustomerRow),
-      proposals,
-    });
+      const proposalSummary = summarizeProposalRows(
+        proposals.map((proposal) => ({
+          customer_id: proposal.customerId,
+          submitted_at: proposal.submittedAt,
+          created_at: proposal.submittedAt,
+        })),
+      ).get(id);
+
+      return NextResponse.json({
+        success: true,
+        data: toCustomer(data as CustomerRow, proposalSummary),
+        proposals,
+      });
     }
 
-    let query = supabase
-      .from("customers")
-      .select("*")
-      .order("created_at", { ascending: false });
+    let totalCount = 0;
+    if (pageSize) {
+      let countQuery = supabase
+        .from("customers")
+        .select("id", { count: "exact", head: true });
+
+      if (companyId) {
+        countQuery = countQuery.eq("company_id", companyId);
+      }
+
+      if (search) {
+        const escapedSearch = search.replace(/[%_]/g, "\\$&");
+        countQuery = countQuery.or(
+          [
+            `name.ilike.%${escapedSearch}%`,
+            `email.ilike.%${escapedSearch}%`,
+            `phone_number.ilike.%${escapedSearch}%`,
+            `business_website.ilike.%${escapedSearch}%`,
+            `required_service.ilike.%${escapedSearch}%`,
+          ].join(","),
+        );
+      }
+
+      const { count, error: countError } = await countQuery;
+
+      if (countError) {
+        console.warn("Failed to count customers:", countError);
+      } else {
+        totalCount = count || 0;
+      }
+    }
+
+    let query = supabase.from("customers").select("*").order("created_at", { ascending: false });
 
     if (companyId) {
       query = query.eq("company_id", companyId);
@@ -137,16 +230,53 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    if (pageSize) {
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+      query = query.range(from, to);
+    }
+
     const { data, error } = await query;
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    const customerRows = (data || []) as CustomerRow[];
+    const customerIds = customerRows.map((customer) => customer.id).filter(Boolean);
+    let proposalSummaries = new Map<string, ProposalSummary>();
+
+    if (customerIds.length > 0) {
+      const { data: proposalRows, error: proposalsError } = await supabase
+        .from("proposals")
+        .select("customer_id, submitted_at, created_at")
+        .in("customer_id", customerIds);
+
+      if (!proposalsError) {
+        proposalSummaries = summarizeProposalRows(
+          (proposalRows || []) as ProposalSummaryRow[],
+        );
+      } else {
+        console.warn("Failed to load customer proposal summaries:", proposalsError);
+      }
+    }
+
+    if (!pageSize) {
+      totalCount = customerRows.length;
+    }
+
     return NextResponse.json(
       {
         success: true,
-        data: ((data || []) as CustomerRow[]).map(toCustomer),
+        data: customerRows.map((customer) =>
+          toCustomer(customer, proposalSummaries.get(customer.id)),
+        ),
+        meta: {
+          page,
+          pageSize: pageSize || customerRows.length || 0,
+          totalCount,
+          totalPages: pageSize ? Math.max(1, Math.ceil(totalCount / pageSize)) : 1,
+        },
       },
       {
         headers: {

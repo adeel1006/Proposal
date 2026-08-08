@@ -8,7 +8,6 @@ import {
   ServiceListSkeleton,
 } from "@/app/components/LoadingSkeletons";
 import ProposalPreview from "@/app/components/ProposalPreview";
-import { generateProposalHTML } from "@/lib/clientPdfService";
 import {
   Proposal,
   ProposalAttachment,
@@ -27,14 +26,7 @@ import { useCompanies } from "@/lib/hooks/useCompanies";
 import { useCustomers } from "@/lib/hooks/useCustomers";
 import { useServices } from "@/lib/hooks/useServices";
 import { useDraftProposals } from "@/lib/hooks/useDraftProposals";
-
-type Html2PdfInstance = {
-  set: (options: Record<string, unknown>) => Html2PdfInstance;
-  from: (element: HTMLElement) => Html2PdfInstance;
-  outputPdf: (outputType: "dataurlstring") => Promise<string>;
-};
-
-type Html2PdfFactory = () => Html2PdfInstance;
+import { slugifyIdSegment } from "@/lib/readableIds";
 
 function createAttachment(): ProposalAttachment {
   return {
@@ -55,7 +47,7 @@ function createFreshProposal(
   companyId = "",
   items: ProposalItem[] = DEFAULT_ITEMS,
 ): Proposal {
-  return {
+  const draft: Proposal = {
     id: "",
     companyId,
     customerId: "",
@@ -66,6 +58,29 @@ function createFreshProposal(
     paymentLink: "",
     attachments: [],
     terms: DEFAULT_TERMS,
+  };
+
+  return {
+    ...draft,
+    id: createInvoiceId(draft),
+  };
+}
+
+function createInvoiceId(proposal: Pick<Proposal, "clientName" | "projectTitle">) {
+  const label = proposal.clientName || proposal.projectTitle || "draft";
+  const slug = slugifyIdSegment(label, "invoice");
+  const stamp = Date.now().toString(36);
+  return `inv-${slug}-${stamp}`;
+}
+
+function ensureInvoiceId(proposal: Proposal): Proposal {
+  if (proposal.id && !proposal.id.toLowerCase().startsWith("prop-")) {
+    return proposal;
+  }
+
+  return {
+    ...proposal,
+    id: createInvoiceId(proposal),
   };
 }
 
@@ -83,18 +98,9 @@ export default function AdminDashboard() {
   });
   const { saveDraft } = useDraftProposals({ autoFetch: false });
 
-  const [proposal, setProposal] = useState<Proposal>({
-    id: "",
-    companyId: "",
-    customerId: "",
-    clientName: "",
-    projectTitle: "",
-    selectedItems: [],
-    items: DEFAULT_ITEMS,
-    paymentLink: "",
-    attachments: [],
-    terms: DEFAULT_TERMS,
-  });
+  const [proposal, setProposal] = useState<Proposal>(() =>
+    createFreshProposal("", DEFAULT_ITEMS),
+  );
 
   const [activeTab, setActiveTab] = useState<"general" | "items" | "preview">(
     "general",
@@ -158,7 +164,7 @@ export default function AdminDashboard() {
     if (savedProposal) {
       try {
         const loadedProposal = JSON.parse(savedProposal) as Proposal;
-        const normalizedProposal = ensureProposalId(loadedProposal);
+        const normalizedProposal = ensureInvoiceId(ensureProposalId(loadedProposal));
         setProposal(normalizedProposal);
         if (normalizedProposal.companyId) {
           setSelectedCompanyId(normalizedProposal.companyId);
@@ -170,7 +176,7 @@ export default function AdminDashboard() {
         console.error("Error loading proposal:", e);
       }
     } else {
-      setProposal((prev) => ({ ...prev, id: "" }));
+      setProposal((prev) => ensureInvoiceId(prev));
     }
 
     setIsHydrated(true);
@@ -325,7 +331,7 @@ export default function AdminDashboard() {
   };
 
   const handleNewProposal = () => {
-    if (confirm("Create a new proposal? Current changes will be saved.")) {
+    if (confirm("Create a new invoice? Current changes will be saved.")) {
       const itemsToUse = selectedCompanyId ? companyServices : DEFAULT_ITEMS;
       setProposal(createFreshProposal(selectedCompanyId || "", itemsToUse));
     }
@@ -413,28 +419,28 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleSendProposalEmail = async () => {
+  const handleSendInvoiceEmail = async () => {
     if (!customerEmail || !proposal.clientName) {
-      setTimedMessage("❌ Please enter customer email and client name");
+      setTimedMessage("Error: Please enter customer email and client name");
       return;
     }
 
     if (!selectedCompany) {
-      setTimedMessage("❌ Please select a company");
+      setTimedMessage("Error: Please select a company");
       return;
     }
 
     if (!proposal.customerId) {
-      setTimedMessage("❌ Please select or add a customer");
+      setTimedMessage("Error: Please select or add a customer");
       return;
     }
 
     if (proposal.selectedItems.length === 0) {
-      setTimedMessage("❌ Please select at least one service");
+      setTimedMessage("Error: Please select at least one service");
       return;
     }
 
-    let proposalWithId = ensureProposalId(proposal);
+    let proposalWithId = ensureInvoiceId(ensureProposalId(proposal));
     if (!proposalWithId.id) {
       const savedDraft = await saveDraft({
         ...proposalWithId,
@@ -468,16 +474,6 @@ export default function AdminDashboard() {
     setSaveMessage(""); // Clear previous messages
 
     try {
-      // Validate PDF library
-      const html2pdf = (window as Window & { html2pdf?: Html2PdfFactory })
-        .html2pdf;
-      if (!html2pdf) {
-        throw new Error(
-          "PDF library (html2pdf) not loaded. Please refresh the page and try again.",
-        );
-      }
-
-      // Generate PDF HTML
       const selectedItems = sanitizedProposal.items.filter((item) =>
         sanitizedProposal.selectedItems.includes(item.id),
       );
@@ -486,7 +482,7 @@ export default function AdminDashboard() {
         sanitizedProposal.items,
       );
 
-      setSaveMessage("Saving proposal to database...");
+      setSaveMessage("Saving invoice to database...");
 
       const saveResponse = await fetch("/api/proposals", {
         method: "POST",
@@ -496,6 +492,7 @@ export default function AdminDashboard() {
           company: selectedCompany,
           total: proposalTotal,
           customerEmail,
+          documentType: "invoice",
         }),
       });
 
@@ -503,66 +500,12 @@ export default function AdminDashboard() {
 
       if (!saveResponse.ok) {
         throw new Error(
-          saveResult?.error || "Failed to save proposal to database",
+          saveResult?.error || "Failed to save invoice to database",
         );
       }
 
-      const htmlContent = generateProposalHTML(
-        sanitizedProposal,
-        selectedCompany,
-        selectedItems.map((item) => ({
-          ...item,
-          quantity: item.quantity || 1,
-        })),
-      );
-
-      // Create element and generate PDF
-      const element = document.createElement("div");
-      element.innerHTML = htmlContent;
-
       setSaveMessage("⏳ Generating PDF...");
-
-      const pdfBase64 = await new Promise<string>((resolve, reject) => {
-        let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-        try {
-          timeoutId = setTimeout(() => {
-            reject(new Error("PDF generation timeout. Please try again."));
-          }, 30000); // 30 second timeout
-
-          html2pdf()
-            .set({
-              margin: 10,
-              filename: `${proposal.projectTitle || "proposal"}.pdf`,
-              image: { type: "jpeg", quality: 0.98 },
-              html2canvas: { scale: 2, useCORS: true, logging: false },
-              jsPDF: { orientation: "portrait", unit: "mm", format: "a4" },
-              pagebreak: { mode: ["avoid-all", "css", "legacy"] },
-            })
-            .from(element)
-            .outputPdf("dataurlstring")
-            .then((pdf: string) => {
-              if (timeoutId) clearTimeout(timeoutId);
-              if (!pdf || typeof pdf !== "string") {
-                throw new Error("PDF generation returned invalid data.");
-              }
-              const base64 = pdf.replace(/^data:application\/pdf;base64,/, "");
-              if (!base64) {
-                throw new Error("Failed to convert PDF to base64.");
-              }
-              resolve(base64);
-            })
-            .catch((error: unknown) => {
-              if (timeoutId) clearTimeout(timeoutId);
-              reject(error);
-            });
-        } catch (error) {
-          if (timeoutId) clearTimeout(timeoutId);
-          reject(error);
-        }
-      });
-
-      setSaveMessage("📧 Sending proposal email...");
+      setSaveMessage("Sending invoice email...");
 
       // Send email with PDF
       const response = await fetch("/api/proposals/send", {
@@ -574,8 +517,9 @@ export default function AdminDashboard() {
           proposal: sanitizedProposal,
           company: selectedCompany,
           items: selectedItems,
-          pdfBase64,
           paymentLink: sanitizedProposal.paymentLink || "",
+          notesHeading: "Invoice Notes",
+          documentType: "invoice",
         }),
       });
 
@@ -588,20 +532,20 @@ export default function AdminDashboard() {
         );
         setProposal(nextProposal);
         setActiveTab("general");
-        setTimedMessage(`✅ ${result.message}. New proposal started.`, 5000);
+        setTimedMessage(`${result.message}. New invoice started.`, 5000);
         setCustomerEmail("");
         setCustomerSearch("");
       } else {
         setTimedMessage(
-          `❌ ${result.error || "Failed to send proposal"}`,
+          `Error: ${result.error || "Failed to send invoice"}`,
           5000,
         );
       }
     } catch (error) {
-      console.error("Error sending proposal:", error);
+      console.error("Error sending invoice:", error);
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      setTimedMessage(`❌ ${errorMessage}`, 5000);
+      setTimedMessage(`Error: ${errorMessage}`, 5000);
     } finally {
       setIsSendingEmail(false);
     }
@@ -664,11 +608,11 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#eef2ff_100%)] text-slate-900">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        {/* Proposal ID & Actions */}
+        {/* Invoice ID & Actions */}
         <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-bold text-gray-600">Proposal ID</p>
+              <p className="text-sm font-bold text-gray-600">Invoice ID</p>
               <p className="font-mono font-bold text-lg">{proposal.id}</p>
             </div>
           <div className="flex justify-start sm:justify-end">
@@ -676,7 +620,7 @@ export default function AdminDashboard() {
               onClick={handleNewProposal}
               className="rounded-xl bg-slate-900 px-4 py-2 font-medium !text-white transition hover:bg-slate-700"
             >
-              ✚ New Proposal
+              New Invoice
             </button>
             {/* <button
               onClick={handleExportProposal}
@@ -991,7 +935,7 @@ export default function AdminDashboard() {
               </div>
 
               <div className="bg-white p-6 rounded-lg shadow">
-                <h2 className="text-lg font-bold mb-4">Proposal Details</h2>
+                <h2 className="text-lg font-bold mb-4">Invoice Details</h2>
 
                 <div className="space-y-4">
                   <div>
@@ -1050,7 +994,7 @@ export default function AdminDashboard() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Project Title *
+                      Invoice Title *
                     </label>
                     <input
                       type="text"
@@ -1068,7 +1012,7 @@ export default function AdminDashboard() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Project Description
+                      Invoice Description
                     </label>
                     <textarea
                       value={proposal.projectDescription || ""}
@@ -1101,14 +1045,14 @@ export default function AdminDashboard() {
                       placeholder="https://your-payment-page.com/checkout"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      This link will be included in the proposal email and shown
+                      This link will be included in the invoice email and shown
                       in the preview.
                     </p>
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Proposal Date
+                      Invoice Date
                     </label>
                     <input
                       type="date"
@@ -1160,6 +1104,7 @@ export default function AdminDashboard() {
                   companyCurrencyTotal={companyCurrencyTotal}
                   paymentLink={proposal.paymentLink}
                   company={selectedCompany}
+                  documentType="invoice"
                 />
               </div>
             </div>
@@ -1246,10 +1191,10 @@ export default function AdminDashboard() {
         {/* Preview Tab */}
         {activeTab === "preview" && (
           <div className="max-w-4xl mx-auto space-y-6">
-            {/* Proposal Details Section */}
+            {/* Invoice Details Section */}
             <div className="rounded-3xl border border-slate-200 bg-white/90 p-8 shadow-sm">
               <h2 className="mb-6 text-2xl font-semibold text-slate-900">
-                📋 Proposal Details
+                Invoice Details
               </h2>
 
               {/* Summary Cards */}
@@ -1264,7 +1209,7 @@ export default function AdminDashboard() {
                 </div>
                 <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-100 p-4 shadow-sm">
                   <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">
-                    Project Title
+                    Invoice Title
                   </div>
                   <div className="mt-1 truncate font-semibold text-slate-900">
                     {proposal.projectTitle || "Not Set"}
@@ -1576,7 +1521,7 @@ export default function AdminDashboard() {
             {/* Customer Email & Send Section */}
             <div className="rounded-3xl border border-slate-200 bg-white/90 p-8 shadow-sm">
               <h2 className="mb-6 text-2xl font-semibold text-slate-900">
-                📧 Send Proposal to Customer
+                Send Invoice to Customer
               </h2>
 
               <div className="space-y-4">
@@ -1594,13 +1539,13 @@ export default function AdminDashboard() {
                     disabled={isSendingEmail}
                   />
                   <p className="mt-1 text-xs text-slate-500">
-                    The proposal PDF will be sent to this email address
+                    The invoice PDF will be sent to this email address
                   </p>
                 </div>
 
                 {/* Send Button */}
                 <button
-                  onClick={handleSendProposalEmail}
+                  onClick={handleSendInvoiceEmail}
                   disabled={
                     isSendingEmail ||
                     !customerEmail ||
@@ -1621,10 +1566,10 @@ export default function AdminDashboard() {
                   {isSendingEmail ? (
                     <>
                       <span className="animate-spin">⏳</span> Sending
-                      Proposal...
+                      Invoice...
                     </>
                   ) : (
-                    <>📧 Send Proposal via Email</>
+                    <>Send Invoice via Email</>
                   )}
                 </button>
 

@@ -16,6 +16,7 @@ interface ProposalPreviewProps {
   usdTotal?: number;
   companyCurrencyTotal?: number;
   company?: CompanyBranding | null;
+  documentType?: 'proposal' | 'invoice';
 }
 
 export default function ProposalPreview({
@@ -32,7 +33,12 @@ export default function ProposalPreview({
   usdTotal,
   companyCurrencyTotal,
   company,
+  documentType = 'proposal',
 }: ProposalPreviewProps) {
+  const isInvoice = documentType === 'invoice';
+  const documentLabel = isInvoice ? 'Invoice' : 'Proposal';
+  const documentTitle = isInvoice ? 'Project Invoice' : 'Project Proposal';
+  const fallbackTitle = isInvoice ? 'Invoice Title' : 'Project Title';
   const selectedItemsList = items.filter((i) => selectedItems.includes(i.id));
   const total = selectedItemsList.reduce((sum, item) => sum + item.price, 0);
 
@@ -55,7 +61,7 @@ export default function ProposalPreview({
 
     const element = document.createElement('a');
     element.setAttribute('href', 'data:text/html;charset=utf-8,' + encodeURIComponent(html));
-    element.setAttribute('download', `${projectTitle || 'proposal'}.html`);
+    element.setAttribute('download', `${projectTitle || documentLabel.toLowerCase()}.html`);
     element.style.display = 'none';
     document.body.appendChild(element);
     element.click();
@@ -82,7 +88,7 @@ export default function ProposalPreview({
         )}
       </div> */}
 
-      {/* Proposal Content */}
+      {/* Document Content */}
       <div
         id="proposal-content"
         className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm print:rounded-none print:border-0 print:shadow-none print:p-0"
@@ -90,9 +96,9 @@ export default function ProposalPreview({
         {/* Header */}
         <div className="border-b border-slate-200 bg-slate-50 px-8 py-6">
           <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
-            Proposal Document
+            {documentLabel} Document
           </div>
-          <div className="mt-2 text-3xl font-semibold text-slate-900">Project Proposal</div>
+          <div className="mt-2 text-3xl font-semibold text-slate-900">{documentTitle}</div>
           <div className="mt-2 text-sm text-slate-500" suppressHydrationWarning>
             Date: {formatDate(undefined)}
             {validUntil && ` | Valid Until: ${formatDate(validUntil)}`}
@@ -126,7 +132,7 @@ export default function ProposalPreview({
             <div className="text-lg font-semibold text-slate-900">
               {clientName || 'Client Name'}
             </div>
-            <div className="text-sm text-slate-600">{projectTitle || 'Project Title'}</div>
+            <div className="text-sm text-slate-600">{projectTitle || fallbackTitle}</div>
           </div>
         </div>
 
@@ -244,7 +250,9 @@ export default function ProposalPreview({
         {/* Footer */}
         <div className="mt-8 border-t border-slate-200 px-8 py-6">
           <p className="text-sm text-slate-600">
-            Thank you for considering our proposal. Please contact us to discuss further.
+            {isInvoice
+              ? 'Thank you for your business. Please contact us if you have any questions about this invoice.'
+              : 'Thank you for considering our proposal. Please contact us to discuss further.'}
           </p>
           {company?.website && (
             <p className="mt-3 text-sm text-slate-600">

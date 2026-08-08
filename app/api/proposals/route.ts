@@ -13,6 +13,7 @@ type SaveProposalPayload = {
   company?: CompanyBranding | null;
   total?: number;
   customerEmail?: string;
+  documentType?: "proposal" | "invoice";
 };
 
 function computeProposalTotal(proposal: Proposal) {
@@ -30,6 +31,7 @@ export async function GET() {
       "id",
       "company_id",
       "customer_id",
+      "customer_created_at",
       "client_name",
       "client_email",
       "client_phone_number",
@@ -47,6 +49,9 @@ export async function GET() {
     ];
 
     const columnsWithoutCustomerId = baseListColumns.filter((column) => column !== "customer_id");
+    const columnsWithoutCustomerCreatedAt = baseListColumns.filter(
+      (column) => column !== "customer_created_at",
+    );
     const columnsWithoutCustomerIdAndAttachments = columnsWithoutCustomerId.filter(
       (column) => column !== "attachments",
     );
@@ -74,6 +79,13 @@ export async function GET() {
       queryResult = await supabase
         .from("proposals")
         .select(columnsWithPaymentLinkWithoutCustomerId.join(", "))
+        .order("submitted_at", { ascending: false });
+    }
+
+    if (queryResult.error?.message?.includes("customer_created_at")) {
+      queryResult = await supabase
+        .from("proposals")
+        .select(columnsWithoutCustomerCreatedAt.join(", "))
         .order("submitted_at", { ascending: false });
     }
 
@@ -115,11 +127,12 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as SaveProposalPayload;
-    const { proposal, company, total, customerEmail } = body;
+    const { proposal, company, total, customerEmail, documentType } = body;
+    const idPrefix = documentType === "invoice" ? "inv" : "prop";
 
     if (!proposal?.id || !proposal?.clientName || !proposal?.projectTitle) {
       return NextResponse.json(
-        { error: "Proposal ID, client name, and project title are required" },
+        { error: "Document ID, client name, and title are required" },
         { status: 400 }
       );
     }
@@ -134,14 +147,26 @@ export async function POST(request: NextRequest) {
       typeof total === "number" && Number.isFinite(total)
         ? total
         : computeProposalTotal(proposal);
+    let customerCreatedAt: string | null = null;
+    if (proposal.customerId) {
+      const { data: customerRow } = await supabase
+        .from("customers")
+        .select("created_at")
+        .eq("id", proposal.customerId)
+        .maybeSingle();
+      customerCreatedAt = customerRow?.created_at || null;
+    }
     let proposalId = proposal.id?.trim() || "";
+    if (documentType === "invoice" && proposalId.toLowerCase().startsWith("prop-")) {
+      proposalId = "";
+    }
     if (!proposalId) {
-      const label = proposal.clientName || proposal.projectTitle || "proposal";
+      const label = proposal.clientName || proposal.projectTitle || documentType || "proposal";
       const { count } = await supabase
         .from("proposals")
         .select("id", { count: "exact", head: true })
-        .ilike("id", `prop-${slugifyIdSegment(label)}-%`);
-      proposalId = formatReadableId("prop", label, (count || 0) + 1);
+        .ilike("id", `${idPrefix}-${slugifyIdSegment(label)}-%`);
+      proposalId = formatReadableId(idPrefix, label, (count || 0) + 1);
     }
 
     const payload: Record<string, unknown> = {
@@ -165,6 +190,7 @@ export async function POST(request: NextRequest) {
       total: proposalTotal,
       status: "submitted",
       submitted_at: new Date().toISOString(),
+      customer_created_at: customerCreatedAt,
     };
 
     let queryResult = await supabase
@@ -209,7 +235,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to save proposal";
+      error instanceof Error ? error.message : "Failed to save document";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -221,7 +247,7 @@ export async function DELETE(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json(
-        { error: "Proposal ID is required" },
+        { error: "Document ID is required" },
         { status: 400 }
       );
     }
@@ -233,10 +259,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, message: "Proposal deleted" });
+    return NextResponse.json({ success: true, message: "Document deleted" });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to delete proposal";
+      error instanceof Error ? error.message : "Failed to delete document";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

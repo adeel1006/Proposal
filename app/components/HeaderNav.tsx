@@ -63,7 +63,7 @@ export default function HeaderNav({ isLoggedIn }: HeaderNavProps) {
               href="/admin/proposals"
               className="transition hover:text-slate-900"
             >
-              Send Proposal
+              Send Invoice
             </Link>
             <Link
               href="/admin/ai-proposal"
@@ -115,7 +115,7 @@ export default function HeaderNav({ isLoggedIn }: HeaderNavProps) {
                 onClick={closeMenu}
                 className="transition hover:text-slate-900"
               >
-                Send Proposal
+                Send Invoice
               </Link>
               <Link
                 href="/admin/ai-proposal"

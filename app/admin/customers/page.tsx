@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Customer } from "@/app/lib/proposalTypes";
 import { useCompanies } from "@/lib/hooks/useCompanies";
@@ -29,6 +29,21 @@ const emptyForm: CustomerFormState = {
   requiredService: "",
   notes: "",
 };
+
+const CUSTOMER_CSV_HEADERS = [
+  "companyId",
+  "name",
+  "email",
+  "phoneNumber",
+  "businessWebsite",
+  "requiredService",
+  "notes",
+] as const;
+
+const CUSTOMER_PAGE_SIZE_OPTIONS = [10, 30, 50, 100] as const;
+
+type CustomerCsvHeader = (typeof CUSTOMER_CSV_HEADERS)[number];
+type CustomerCsvRow = Record<CustomerCsvHeader, string>;
 
 function toFormState(customer: Customer): CustomerFormState {
   return {
@@ -63,17 +78,112 @@ function formatDate(value?: string) {
   return date.toLocaleDateString();
 }
 
+function formatAddedDate(value?: string) {
+  if (!value) {
+    return "Unknown date";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function getProposalStatusLabel(customer: Customer) {
+  return customer.proposalStatus === "sent" || (customer.proposalCount || 0) > 0
+    ? "Sent"
+    : "Not sent";
+}
+
+function getStatusBadgeClass(customer: Customer) {
+  return getProposalStatusLabel(customer) === "Sent"
+    ? "border-emerald-400 bg-white text-emerald-700"
+    : "border-rose-400 bg-white text-rose-700";
+}
+
+function getDateBadgeClass() {
+  return "border-blue-400 bg-white text-blue-700";
+}
+
+const glassBadgeBase =
+  "rounded-full border px-2.5 py-1 text-xs font-semibold shadow-sm backdrop-blur-md";
+
+function csvEscape(value: string) {
+  if (/[",\r\n]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+
+  return value;
+}
+
+function parseCsvLine(line: string) {
+  const values: string[] = [];
+  let current = "";
+  let isQuoted = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const nextChar = line[index + 1];
+
+    if (char === '"' && isQuoted && nextChar === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      isQuoted = !isQuoted;
+    } else if (char === "," && !isQuoted) {
+      values.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  values.push(current.trim());
+  return values;
+}
+
+function parseCustomerCsv(csvText: string) {
+  const lines = csvText
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/)
+    .filter((line) => line.trim());
+
+  if (lines.length < 2) {
+    throw new Error("CSV must include a header row and at least one customer row.");
+  }
+
+  const headers = parseCsvLine(lines[0]).map((header) => header.trim());
+  const missingHeaders = CUSTOMER_CSV_HEADERS.filter(
+    (header) => !headers.includes(header),
+  );
+
+  if (missingHeaders.length > 0) {
+    throw new Error(`Missing required CSV columns: ${missingHeaders.join(", ")}`);
+  }
+
+  return lines.slice(1).map((line, rowIndex) => {
+    const values = parseCsvLine(line);
+    const row = CUSTOMER_CSV_HEADERS.reduce((acc, header) => {
+      const valueIndex = headers.indexOf(header);
+      acc[header] = values[valueIndex]?.trim() || "";
+      return acc;
+    }, {} as CustomerCsvRow);
+
+    return {
+      rowNumber: rowIndex + 2,
+      data: row,
+    };
+  });
+}
+
 export default function CustomersPage() {
   const { companies, loading: companiesLoading } = useCompanies();
-  const {
-    customers,
-    loading,
-    error,
-    createCustomer,
-    updateCustomer,
-    deleteCustomer,
-    fetchCustomerWithProposals,
-  } = useCustomers();
   const [query, setQuery] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -82,26 +192,171 @@ export default function CustomersPage() {
   const [proposalHistory, setProposalHistory] = useState<CustomerProposalHistory[]>([]);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isImportingCsv, setIsImportingCsv] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<(typeof CUSTOMER_PAGE_SIZE_OPTIONS)[number]>(10);
+  const csvInputRef = useRef<HTMLInputElement | null>(null);
 
-  const filteredCustomers = customers.filter((customer) => {
-    const matchesCompany = !companyFilter || customer.companyId === companyFilter;
-    const haystack = [
-      customer.id,
-      customer.name,
-      customer.email,
-      customer.phoneNumber,
-      customer.businessWebsite,
-      customer.requiredService,
-    ]
-      .join(" ")
-      .toLowerCase();
-    return matchesCompany && haystack.includes(query.toLowerCase());
+  const {
+    customers,
+    totalCount,
+    loading,
+    error,
+    fetchCustomers,
+    createCustomer,
+    updateCustomer,
+    deleteCustomer,
+    fetchCustomerWithProposals,
+  } = useCustomers(companyFilter || undefined, {
+    autoFetch: true,
+    page: currentPage,
+    pageSize,
+    search: query,
   });
+
+  const totalCustomerPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalCustomerPages);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [query, companyFilter, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalCustomerPages) {
+      setCurrentPage(totalCustomerPages);
+    }
+  }, [currentPage, totalCustomerPages]);
+
+  const paginationStart = Math.max(1, safeCurrentPage - 2);
+  const paginationEnd = Math.min(totalCustomerPages, safeCurrentPage + 2);
+  const paginationPages = Array.from(
+    { length: paginationEnd - paginationStart + 1 },
+    (_, index) => paginationStart + index,
+  );
 
   const setTimedMessage = (nextMessage: { type: "success" | "error"; text: string }) => {
     setMessage(nextMessage);
     setTimeout(() => setMessage(null), 3500);
+  };
+
+  const handleDownloadSampleCsv = () => {
+    const sampleCompanyId = companyFilter || companies[0]?.id || "replace-with-company-id";
+    const sampleRows = [
+      CUSTOMER_CSV_HEADERS,
+      [
+        sampleCompanyId,
+        "Acme Foods",
+        "owner@acmefoods.com",
+        "+1 555 123 4567",
+        "https://acmefoods.com",
+        "SEO campaign",
+        "Interested in improving local search visibility.",
+      ],
+      [
+        sampleCompanyId,
+        "Northstar Studio",
+        "hello@northstarstudio.com",
+        "+1 555 987 6543",
+        "https://northstarstudio.com",
+        "Website redesign",
+        "Needs a refreshed services page and stronger portfolio layout.",
+      ],
+    ];
+    const csv = sampleRows
+      .map((row) => row.map((value) => csvEscape(value)).join(","))
+      .join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "customers-sample.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCsvUploadClick = () => {
+    csvInputRef.current?.click();
+  };
+
+  const handleCsvFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setTimedMessage({ type: "error", text: "Please upload a .csv file." });
+      return;
+    }
+
+    setIsImportingCsv(true);
+    try {
+      const parsedRows = parseCustomerCsv(await file.text());
+      const knownCompanyIds = new Set(companies.map((company) => company.id));
+      const errors: string[] = [];
+      let createdCount = 0;
+
+      for (const { rowNumber, data } of parsedRows) {
+        if (!data.companyId) {
+          errors.push(`Row ${rowNumber}: companyId is required.`);
+          continue;
+        }
+
+        if (!knownCompanyIds.has(data.companyId)) {
+          errors.push(`Row ${rowNumber}: companyId "${data.companyId}" was not found.`);
+          continue;
+        }
+
+        if (!data.name) {
+          errors.push(`Row ${rowNumber}: name is required.`);
+          continue;
+        }
+
+        try {
+          await createCustomer({
+            companyId: data.companyId,
+            name: data.name,
+            email: data.email,
+            phoneNumber: data.phoneNumber,
+            businessWebsite: data.businessWebsite,
+            requiredService: data.requiredService,
+            notes: data.notes,
+          });
+          createdCount += 1;
+        } catch (error) {
+          const text = error instanceof Error ? error.message : "Failed to create customer";
+          errors.push(`Row ${rowNumber}: ${text}`);
+        }
+      }
+
+      if (createdCount === 0 && errors.length > 0) {
+        setTimedMessage({
+          type: "error",
+          text: `No customers imported. ${errors.slice(0, 3).join(" ")}`,
+        });
+        return;
+      }
+
+      await fetchCustomers({ force: true, silent: true });
+
+      setTimedMessage({
+        type: errors.length > 0 ? "error" : "success",
+        text:
+          errors.length > 0
+            ? `Imported ${createdCount} customer(s). ${errors.length} row(s) need attention. ${errors.slice(0, 2).join(" ")}`
+            : `Imported ${createdCount} customer(s) successfully.`,
+      });
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "Failed to import CSV";
+      setTimedMessage({ type: "error", text });
+    } finally {
+      setIsImportingCsv(false);
+    }
   };
 
   const handleNewCustomer = () => {
@@ -158,6 +413,10 @@ export default function CustomersPage() {
 
       setShowForm(false);
       setForm(emptyForm);
+      if (!form.id) {
+        setCurrentPage(1);
+      }
+      await fetchCustomers({ force: true, silent: true });
       setTimedMessage({
         type: "success",
         text: form.id ? "Customer updated successfully." : "Customer created successfully.",
@@ -180,6 +439,7 @@ export default function CustomersPage() {
 
     try {
       await deleteCustomer(customer.id);
+      await fetchCustomers({ force: true, silent: true });
       if (selectedCustomer?.id === customer.id) {
         setSelectedCustomer(null);
         setProposalHistory([]);
@@ -206,13 +466,37 @@ export default function CustomersPage() {
               Manage customer profiles, required services, websites, and every proposal linked to them.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleNewCustomer}
-            className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold !text-white shadow-sm transition hover:bg-slate-700"
-          >
-            + Add Customer
-          </button>
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <input
+              ref={csvInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              onChange={handleCsvFileChange}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={handleDownloadSampleCsv}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+            >
+              Download Sample CSV
+            </button>
+            <button
+              type="button"
+              onClick={handleCsvUploadClick}
+              disabled={isImportingCsv || companiesLoading || companies.length === 0}
+              className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isImportingCsv ? "Importing..." : "Upload Customers CSV"}
+            </button>
+            <button
+              type="button"
+              onClick={handleNewCustomer}
+              className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold !text-white shadow-sm transition hover:bg-slate-700"
+            >
+              + Add Customer
+            </button>
+          </div>
         </div>
 
         {message && (
@@ -405,13 +689,40 @@ export default function CustomersPage() {
               </select>
             </div>
 
+            <div className="mb-5 flex flex-col gap-3 border-b border-slate-100 pb-5 md:flex-row md:items-center md:justify-between">
+              <div className="text-sm text-slate-600">
+                <span className="font-semibold text-slate-900">
+                  {totalCount}
+                </span>{" "}
+                customer{totalCount === 1 ? "" : "s"} found
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-semibold text-slate-700">
+                  Show
+                </label>
+                <select
+                  value={pageSize}
+                  onChange={(event) =>
+                    setPageSize(Number(event.target.value) as (typeof CUSTOMER_PAGE_SIZE_OPTIONS)[number])
+                  }
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                >
+                  {CUSTOMER_PAGE_SIZE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option} per page
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             {loading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((item) => (
                   <div key={item} className="h-24 animate-pulse rounded-2xl bg-slate-100" />
                 ))}
               </div>
-            ) : filteredCustomers.length === 0 ? (
+            ) : totalCount === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
                 <p className="font-semibold text-slate-700">No customers found</p>
                 <p className="mt-2 text-sm text-slate-500">
@@ -419,9 +730,11 @@ export default function CustomersPage() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {filteredCustomers.map((customer) => {
+              <>
+                <div className="space-y-3">
+                  {customers.map((customer) => {
                   const company = companies.find((item) => item.id === customer.companyId);
+                  const proposalStatusLabel = getProposalStatusLabel(customer);
                   return (
                     <article
                       key={customer.id}
@@ -443,6 +756,14 @@ export default function CustomersPage() {
                             </h3>
                             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
                               {customer.id}
+                            </span>
+                            <span
+                              className={`${glassBadgeBase} ${getStatusBadgeClass(customer)}`}
+                            >
+                              Proposal: {proposalStatusLabel}
+                            </span>
+                            <span className={`${glassBadgeBase} ${getDateBadgeClass()}`}>
+                              Added: {formatAddedDate(customer.createdAt)}
                             </span>
                           </div>
                           <p className="mt-1 text-sm text-slate-500">
@@ -486,7 +807,60 @@ export default function CustomersPage() {
                     </article>
                   );
                 })}
-              </div>
+                </div>
+
+                <div className="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-slate-600">
+                    Showing{" "}
+                    <span className="font-semibold text-slate-900">
+                      {totalCount === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1}
+                    </span>{" "}
+                    to{" "}
+                    <span className="font-semibold text-slate-900">
+                      {Math.min(safeCurrentPage * pageSize, totalCount)}
+                    </span>{" "}
+                    of{" "}
+                    <span className="font-semibold text-slate-900">
+                      {totalCount}
+                    </span>{" "}
+                    customers
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                      disabled={safeCurrentPage <= 1}
+                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Previous
+                    </button>
+                    {paginationPages.map((page) => (
+                      <button
+                        key={page}
+                        type="button"
+                        onClick={() => setCurrentPage(page)}
+                        className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                          page === safeCurrentPage
+                            ? "bg-slate-900 text-white"
+                            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCurrentPage((page) => Math.min(totalCustomerPages, page + 1))
+                      }
+                      disabled={safeCurrentPage >= totalCustomerPages}
+                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
           </section>
 
@@ -502,6 +876,20 @@ export default function CustomersPage() {
                 <div className="mt-4 space-y-3 text-sm text-slate-700">
                   <p>
                     <span className="font-semibold">ID:</span> {selectedCustomer.id}
+                  </p>
+                  <p>
+                    <span className="font-semibold">Proposal status:</span>{" "}
+                    <span
+                      className={`ml-2 ${glassBadgeBase} ${getStatusBadgeClass(selectedCustomer)}`}
+                    >
+                      {getProposalStatusLabel(selectedCustomer)}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-semibold">Added on:</span>{" "}
+                    <span className={`ml-2 ${glassBadgeBase} ${getDateBadgeClass()}`}>
+                      {formatAddedDate(selectedCustomer.createdAt)}
+                    </span>
                   </p>
                   {selectedCustomer.email && (
                     <p>

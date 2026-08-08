@@ -15,7 +15,7 @@ export default function Home() {
               href="/admin/proposals"
               className="inline-flex items-center justify-center rounded-full bg-slate-900 px-7 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700"
             >
-              Open Proposal Dashboard
+              Open Invoice Dashboard
             </a>
           </div>
         </section>
@@ -56,7 +56,7 @@ export default function Home() {
             className="rounded-3xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-sky-300 hover:shadow-lg"
           >
             <div className="text-3xl">📝</div>
-            <h2 className="mt-4 text-lg font-semibold text-slate-900">Send Proposals</h2>
+            <h2 className="mt-4 text-lg font-semibold text-slate-900">Send Invoices</h2>
             <p className="mt-2 text-sm leading-6 text-slate-700">
               Create, edit, and export proposal drafts with live preview.
             </p>

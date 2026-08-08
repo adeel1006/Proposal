@@ -24,6 +24,7 @@ type ProposalAttachment = {
 
 type SubmittedProposal = {
   id: string;
+  customer_id?: string | null;
   client_name: string;
   client_email: string | null;
   client_phone_number?: string | null;
@@ -39,6 +40,7 @@ type SubmittedProposal = {
   payment_link?: string | null;
   selected_items?: string[];
   items?: ProposalItem[];
+  customer_created_at?: string | null;
   company?: {
     businessName?: string;
     email?: string;
@@ -331,6 +333,7 @@ export default function SubmittedProposalsPage() {
                   <th className="px-4 py-3 font-semibold">Project</th>
                   <th className="px-4 py-3 font-semibold">Total</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 font-semibold">Customer Added</th>
                   <th className="px-4 py-3 font-semibold">Submitted At</th>
                   <th className="px-4 py-3 font-semibold">Actions</th>
                 </tr>
@@ -394,6 +397,9 @@ export default function SubmittedProposalsPage() {
                             </div>
                           )}
                         </div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">
+                        {formatDate(proposal.customer_created_at)}
                       </td>
                       <td className="px-4 py-3">{formatDate(proposal.submitted_at)}</td>
                       <td className="px-4 py-3">
