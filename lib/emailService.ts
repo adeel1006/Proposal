@@ -434,3 +434,86 @@ export async function sendProposalEmail(
 
   return transporter.sendMail(mailOptions);
 }
+
+export async function sendManualProposalEmail({
+  customerEmail,
+  customerName,
+  company,
+  proposalTitle,
+  introMessage,
+  pdf,
+}: {
+  customerEmail: string;
+  customerName: string;
+  company: CompanyBranding;
+  proposalTitle: string;
+  introMessage?: string;
+  pdf: { filename: string; content: Buffer };
+}) {
+  const { logoSrc, logoAttachment } = resolveLogo(company);
+  const safeTitle = escapeHtml(proposalTitle);
+  const greetingName = escapeHtml(customerName);
+  const message = introMessage?.trim()
+    ? escapeHtml(introMessage.trim()).replace(/\r?\n/g, "<br />")
+    : `Please find the proposal for <strong>${safeTitle}</strong> attached to this email. If you have any questions, please reply to this message.`;
+
+  const emailBody = `
+    <!DOCTYPE html>
+    <html>
+      <body style="margin: 0; padding: 24px 12px; background: #f1f5f9; font-family: Arial, sans-serif; color: #0f172a;">
+        <table role="presentation" style="width: 100%; max-width: 640px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
+          <tr>
+            <td style="padding: 28px 30px; background: #0f172a; color: #ffffff;">
+              ${logoSrc ? `<img src="${logoSrc}" alt="${escapeHtml(company.businessName)}" style="display: block; max-height: 44px; max-width: 200px; margin-bottom: 16px;" />` : ""}
+              <div style="font-size: 22px; font-weight: 700;">${escapeHtml(company.businessName)}</div>
+              <div style="margin-top: 5px; font-size: 13px; color: #cbd5e1;">Proposal enclosed</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 30px;">
+              <p style="margin: 0 0 16px; font-size: 16px;">Hello ${greetingName},</p>
+              <div style="font-size: 15px; line-height: 1.65; color: #334155;">${message}</div>
+              <div style="margin: 24px 0; padding: 16px; border: 1px solid #cbd5e1; border-radius: 12px; background: #f8fafc;">
+                <div style="font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.08em;">Attached proposal</div>
+                <div style="margin-top: 5px; font-size: 16px; font-weight: 700; color: #0f172a;">${safeTitle}</div>
+              </div>
+              <p style="margin: 0; font-size: 15px; line-height: 1.65; color: #334155;">Kind regards,<br /><strong>${escapeHtml(company.businessName)}</strong></p>
+              <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 13px; line-height: 1.6; color: #475569;">
+                ${company.email ? `<div>${escapeHtml(company.email)}</div>` : ""}
+                ${company.mobileNumber ? `<div>${escapeHtml(company.mobileNumber)}</div>` : ""}
+                ${company.address ? `<div>${escapeHtml(company.address)}</div>` : ""}
+                ${company.website ? `<div><a href="${escapeHtml(company.website)}" style="color: #2563eb;">${escapeHtml(company.website)}</a></div>` : ""}
+              </div>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `;
+
+  const attachments: Attachment[] = [
+    {
+      filename: pdf.filename,
+      content: pdf.content,
+      contentType: "application/pdf",
+      contentDisposition: "attachment",
+    },
+  ];
+
+  if (logoAttachment) {
+    attachments.unshift(logoAttachment);
+  }
+
+  const smtpUser = process.env.SMTP_USER;
+  const fromName = company.businessName;
+  const replyToEmail = company.replyToEmail || company.email;
+
+  return transporter.sendMail({
+    from: smtpUser ? `${fromName} <${smtpUser}>` : fromName,
+    to: customerEmail,
+    replyTo: replyToEmail || smtpUser,
+    subject: `Proposal: ${proposalTitle} - ${company.businessName}`,
+    html: emailBody,
+    attachments,
+  });
+}

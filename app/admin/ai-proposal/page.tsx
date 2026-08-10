@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -23,6 +23,9 @@ type GenerateResponse = {
 };
 
 type AIProvider = "openai" | "gemini" | "mistral";
+type DeliveryMode = "ai" | "manual";
+
+const MAX_MANUAL_PDF_SIZE_BYTES = 10 * 1024 * 1024;
 
 type PromptPresetId =
   | "web-design"
@@ -195,6 +198,7 @@ export default function AiProposalPage() {
     { autoFetch: Boolean(selectedCompanyId) },
   );
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("ai");
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [provider, setProvider] = useState<AIProvider>("openai");
   const [agencyTone, setAgencyTone] = useState(
@@ -212,6 +216,11 @@ export default function AiProposalPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState("");
+  const [manualRecipientEmail, setManualRecipientEmail] = useState("");
+  const [manualProposalTitle, setManualProposalTitle] = useState("");
+  const [manualIntroMessage, setManualIntroMessage] = useState("");
+  const [manualPdf, setManualPdf] = useState<File | null>(null);
+  const manualPdfInputRef = useRef<HTMLInputElement>(null);
 
   const selectedCompany =
     companies.find((company) => company.id === selectedCompanyId) || null;
@@ -223,7 +232,18 @@ export default function AiProposalPage() {
     setSelectedServiceIds([]);
     setGeneratedProposal(null);
     setRecipientEmail("");
+    setManualRecipientEmail("");
+    setManualProposalTitle("");
+    setManualIntroMessage("");
+    setManualPdf(null);
+    if (manualPdfInputRef.current) {
+      manualPdfInputRef.current.value = "";
+    }
   }, [selectedCompanyId]);
+
+  useEffect(() => {
+    setManualRecipientEmail(selectedCustomer?.email || "");
+  }, [selectedCustomer?.id, selectedCustomer?.email]);
 
   useEffect(() => {
     if (!generatedProposal) {
@@ -549,6 +569,100 @@ export default function AiProposalPage() {
     }
   };
 
+  const handleManualPdfChange = (file: File | null) => {
+    if (!file) {
+      setManualPdf(null);
+      return;
+    }
+
+    const hasPdfName = file.name.toLowerCase().endsWith(".pdf");
+    if (file.type !== "application/pdf" && !hasPdfName) {
+      setTimedMessage({ type: "error", text: "Attach a PDF file only." });
+      if (manualPdfInputRef.current) {
+        manualPdfInputRef.current.value = "";
+      }
+      return;
+    }
+
+    if (file.size === 0 || file.size > MAX_MANUAL_PDF_SIZE_BYTES) {
+      setTimedMessage({
+        type: "error",
+        text: "The proposal PDF must be between 1 byte and 10 MB.",
+      });
+      if (manualPdfInputRef.current) {
+        manualPdfInputRef.current.value = "";
+      }
+      return;
+    }
+
+    setManualPdf(file);
+  };
+
+  const handleSendManualProposal = async () => {
+    if (!selectedCompany || !selectedCustomer) {
+      setTimedMessage({ type: "error", text: "Select both company and customer first." });
+      return;
+    }
+
+    if (!manualRecipientEmail.trim()) {
+      setTimedMessage({ type: "error", text: "Enter the client email before sending." });
+      return;
+    }
+
+    if (!manualProposalTitle.trim()) {
+      setTimedMessage({ type: "error", text: "Enter a proposal title before sending." });
+      return;
+    }
+
+    if (!manualPdf) {
+      setTimedMessage({ type: "error", text: "Attach the proposal PDF before sending." });
+      return;
+    }
+
+    setIsSendingEmail(true);
+    setMessage({ type: "info", text: "Preparing branded proposal email..." });
+
+    try {
+      const formData = new FormData();
+      formData.set("companyId", selectedCompany.id);
+      formData.set("customerId", selectedCustomer.id);
+      formData.set("recipientEmail", manualRecipientEmail.trim());
+      formData.set("proposalTitle", manualProposalTitle.trim());
+      formData.set("introMessage", manualIntroMessage.trim());
+      formData.set("pdf", manualPdf);
+
+      const response = await fetch("/api/proposals/send-manual", {
+        method: "POST",
+        body: formData,
+      });
+      const result = await readJsonResponse<{
+        success?: boolean;
+        message?: string;
+        error?: string;
+      }>(response);
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Failed to send manual proposal");
+      }
+
+      setTimedMessage({
+        type: "success",
+        text: result.message || `Manual proposal sent to ${manualRecipientEmail.trim()}.`,
+      });
+      setManualPdf(null);
+      if (manualPdfInputRef.current) {
+        manualPdfInputRef.current.value = "";
+      }
+    } catch (error) {
+      setTimedMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Failed to send manual proposal",
+      }, 6500);
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
   const handleOpenInEditor = () => {
     if (!generatedProposal) {
       return;
@@ -568,19 +682,19 @@ export default function AiProposalPage() {
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-              AI proposal
+              Proposal delivery
             </p>
             <h1 className="mt-2 text-3xl font-bold text-slate-950">
-              Generate Proposal Draft
+              Create and Send Proposals
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              Build a structured draft from company services, customer data, and
-              the customer&apos;s website.
+              Generate a proposal with AI or send your own prepared PDF with a
+              branded client email.
             </p>
           </div>
           <Link
             href="/admin/proposals"
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
           >
             Manual editor
           </Link>
@@ -599,6 +713,63 @@ export default function AiProposalPage() {
             {message.text}
           </div>
         )}
+
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row">
+          <button
+            type="button"
+            onClick={() => setDeliveryMode("ai")}
+            className={`flex-1 rounded-2xl border px-5 py-4 text-left transition ${
+              deliveryMode === "ai"
+                ? "border-slate-950 bg-slate-950 text-white shadow-lg shadow-slate-200"
+                : "border-slate-200 bg-white/90 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+            }`}
+          >
+            <span
+              className="block text-sm font-semibold"
+              style={deliveryMode === "ai" ? { color: "#ffffff" } : undefined}
+            >
+              Generate with AI
+            </span>
+            <span
+              className="mt-1 block text-sm"
+              style={
+                deliveryMode === "ai"
+                  ? { color: "rgba(255,255,255,0.82)" }
+                  : undefined
+              }
+            >
+              Build, edit, and send a proposal from your saved services.
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setDeliveryMode("manual")}
+            className={`flex-1 rounded-2xl border px-5 py-4 text-left transition ${
+              deliveryMode === "manual"
+                ? "border-slate-950 bg-slate-950 text-white shadow-lg shadow-slate-200"
+                : "border-slate-200 bg-white/90 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+            }`}
+          >
+            <span
+              className="block text-sm font-semibold"
+              style={
+                deliveryMode === "manual" ? { color: "#ffffff" } : undefined
+              }
+            >
+              Attach manual PDF
+            </span>
+            <span
+              className="mt-1 block text-sm"
+              style={
+                deliveryMode === "manual"
+                  ? { color: "rgba(255,255,255,0.82)" }
+                  : undefined
+              }
+            >
+              Send an existing proposal PDF with your company branding.
+            </span>
+          </button>
+        </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
           <section className="space-y-5">
@@ -666,140 +837,242 @@ export default function AiProposalPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-950">
-                Services
-              </h2>
-              <div className="mt-4 space-y-2">
-                {servicesLoading ? (
-                  <div className="text-sm text-slate-500">
-                    Loading services...
+            {deliveryMode === "ai" && (
+              <>
+                <div className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
+                  <h2 className="text-lg font-semibold text-slate-950">
+                    Services
+                  </h2>
+                  <div className="mt-4 space-y-2">
+                    {servicesLoading ? (
+                      <div className="text-sm text-slate-500">
+                        Loading services...
+                      </div>
+                    ) : services.length === 0 ? (
+                      <div className="text-sm text-slate-500">
+                        Select a company with saved services.
+                      </div>
+                    ) : (
+                      services.map((service) => (
+                        <label
+                          key={service.id}
+                          className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm transition hover:bg-slate-50"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedServiceIds.includes(service.id)}
+                            onChange={() => toggleService(service.id)}
+                            className="mt-1"
+                          />
+                          <span>
+                            <span className="block font-semibold text-slate-900">
+                              {service.name}
+                            </span>
+                            <span className="block text-xs text-slate-500">
+                              {service.description || "No description"}
+                            </span>
+                          </span>
+                        </label>
+                      ))
+                    )}
                   </div>
-                ) : services.length === 0 ? (
-                  <div className="text-sm text-slate-500">
-                    Select a company with saved services.
+
+                  <div className="mt-5 border-t border-slate-200 pt-5">
+                    <p className="text-sm font-medium text-slate-700">
+                      Quick AI prompts
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Apply a short, company-aware preset and auto-pick matching services where possible.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {PROMPT_PRESETS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => applyPromptPreset(preset)}
+                          disabled={!selectedCompany || servicesLoading}
+                          className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                ) : (
-                  services.map((service) => (
-                    <label
-                      key={service.id}
-                      className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm transition hover:bg-slate-50"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedServiceIds.includes(service.id)}
-                        onChange={() => toggleService(service.id)}
-                        className="mt-1"
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
+                  <h2 className="text-lg font-semibold text-slate-950">
+                    AI Instructions
+                  </h2>
+                  <div className="mt-5 space-y-4">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">
+                        AI Provider
+                      </label>
+                      <select
+                        value={provider}
+                        onChange={(event) =>
+                          setProvider(event.target.value as AIProvider)
+                        }
+                      >
+                        <option value="openai">OpenAI</option>
+                        <option value="gemini">Gemini</option>
+                        <option value="mistral">Mistral</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">
+                        Agency Tone
+                      </label>
+                      <textarea
+                        value={agencyTone}
+                        onChange={(event) => setAgencyTone(event.target.value)}
+                        rows={3}
                       />
-                      <span>
-                        <span className="block font-semibold text-slate-900">
-                          {service.name}
-                        </span>
-                        <span className="block text-xs text-slate-500">
-                          {service.description || "No description"}
-                        </span>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">
+                        Scope Limitations
+                      </label>
+                      <textarea
+                        value={scopeLimitations}
+                        onChange={(event) =>
+                          setScopeLimitations(event.target.value)
+                        }
+                        rows={5}
+                        placeholder="Only propose selected services. Do not promise ad spend results, fixed timelines, services not listed, or unsupported facts."
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleGenerate}
+                      disabled={
+                        isGenerating ||
+                        !selectedCompany ||
+                        !selectedCustomer ||
+                        selectedServiceIds.length === 0 ||
+                        !scopeLimitations.trim()
+                      }
+                      className={`w-full rounded-xl px-4 py-3 text-sm font-semibold transition ${
+                        isGenerating ||
+                        !selectedCompany ||
+                        !selectedCustomer ||
+                        selectedServiceIds.length === 0 ||
+                        !scopeLimitations.trim()
+                          ? "cursor-not-allowed bg-slate-200 text-slate-500"
+                          : "bg-slate-900 !text-white hover:bg-slate-700"
+                      }`}
+                    >
+                      {isGenerating ? "Generating draft..." : "Generate draft"}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {deliveryMode === "manual" && (
+              <div className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-slate-950">
+                  Manual Proposal Details
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-slate-500">
+                  Your client receives a branded greeting and this single PDF attachment. The send is recorded in the customer&apos;s proposal history.
+                </p>
+                <div className="mt-5 space-y-4">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Proposal title
+                    </label>
+                    <input
+                      value={manualProposalTitle}
+                      onChange={(event) =>
+                        setManualProposalTitle(event.target.value)
+                      }
+                      placeholder="Website redesign proposal"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Client email
+                    </label>
+                    <input
+                      type="email"
+                      value={manualRecipientEmail}
+                      onChange={(event) =>
+                        setManualRecipientEmail(event.target.value)
+                      }
+                      placeholder="client@example.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Personal message{" "}
+                      <span className="font-normal text-slate-400">
+                        (optional)
                       </span>
                     </label>
-                  ))
-                )}
-              </div>
-
-              <div className="mt-5 border-t border-slate-200 pt-5">
-                <p className="text-sm font-medium text-slate-700">
-                  Quick AI prompts
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Apply a short, company-aware preset and auto-pick matching services where possible.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {PROMPT_PRESETS.map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => applyPromptPreset(preset)}
-                      disabled={!selectedCompany || servicesLoading}
-                      className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
+                    <textarea
+                      value={manualIntroMessage}
+                      onChange={(event) =>
+                        setManualIntroMessage(event.target.value)
+                      }
+                      rows={4}
+                      placeholder="Add a short note for the client. A professional greeting is included automatically."
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Proposal PDF
+                    </label>
+                    <input
+                      ref={manualPdfInputRef}
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      onChange={(event) =>
+                        handleManualPdfChange(event.target.files?.[0] || null)
+                      }
+                      className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-white hover:file:bg-slate-700"
+                    />
+                    <p className="mt-2 text-xs text-slate-500">
+                      PDF only, up to 10 MB.
+                    </p>
+                    {manualPdf && (
+                      <p className="mt-2 text-sm font-medium text-emerald-700">
+                        Attached: {manualPdf.name}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-950">
-                AI Instructions
-              </h2>
-              <div className="mt-5 space-y-4">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    AI Provider
-                  </label>
-                  <select
-                    value={provider}
-                    onChange={(event) =>
-                      setProvider(event.target.value as AIProvider)
-                    }
-                  >
-                    <option value="openai">OpenAI</option>
-                    <option value="gemini">Gemini</option>
-                    <option value="mistral">Mistral</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Agency Tone
-                  </label>
-                  <textarea
-                    value={agencyTone}
-                    onChange={(event) => setAgencyTone(event.target.value)}
-                    rows={3}
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Scope Limitations
-                  </label>
-                  <textarea
-                    value={scopeLimitations}
-                    onChange={(event) =>
-                      setScopeLimitations(event.target.value)
-                    }
-                    rows={5}
-                    placeholder="Only propose selected services. Do not promise ad spend results, fixed timelines, services not listed, or unsupported facts."
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleGenerate}
-                  disabled={
-                    isGenerating ||
-                    !selectedCompany ||
-                    !selectedCustomer ||
-                    selectedServiceIds.length === 0 ||
-                    !scopeLimitations.trim()
-                  }
-                  className={`w-full rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                    isGenerating ||
-                    !selectedCompany ||
-                    !selectedCustomer ||
-                    selectedServiceIds.length === 0 ||
-                    !scopeLimitations.trim()
-                      ? "cursor-not-allowed bg-slate-200 text-slate-500"
-                      : "bg-slate-900 !text-white hover:bg-slate-700"
-                  }`}
-                >
-                  {isGenerating ? "Generating draft..." : "Generate draft"}
-                </button>
-              </div>
-            </div>
+            )}
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
+            {deliveryMode === "manual" ? (
+              <div className="flex min-h-96 flex-col justify-between">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-700">Manual delivery</p>
+                  <h2 className="mt-2 text-2xl font-bold text-slate-950">Ready to send your PDF</h2>
+                  <p className="mt-3 max-w-lg text-sm leading-6 text-slate-600">
+                    Select a company and customer, complete the details, then send. The email uses the selected company&apos;s logo, contact details, and reply-to address.
+                  </p>
+                  <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+                    Only the PDF you attach is sent to the client. No invoice or generated document is included.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSendManualProposal}
+                  disabled={isSendingEmail || !selectedCompany || !selectedCustomer || !manualRecipientEmail.trim() || !manualProposalTitle.trim() || !manualPdf}
+                  className="mt-8 w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold !text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {isSendingEmail ? "Sending proposal..." : "Send manual proposal"}
+                </button>
+              </div>
+            ) : <>
             <div className="mb-5 flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-slate-950">
@@ -912,6 +1185,7 @@ export default function AiProposalPage() {
                 draft to review & Modify here.
               </div>
             )}
+            </>}
           </section>
         </div>
       </div>
