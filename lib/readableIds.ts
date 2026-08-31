@@ -13,3 +13,8 @@ export function formatReadableId(prefix: string, label: string, index: number) {
   const sequence = String(index).padStart(3, "0");
   return `${prefix}-${slug}-${sequence}`;
 }
+
+export function formatInvoiceId(index: number, date = new Date()) {
+  const year = date.getUTCFullYear();
+  return `INV-${year}-${String(index).padStart(4, "0")}`;
+}

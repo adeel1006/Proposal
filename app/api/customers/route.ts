@@ -19,6 +19,7 @@ type CustomerRow = {
   id: string;
   company_id: string | null;
   name: string;
+  business_name: string | null;
   email: string | null;
   phone_number: string | null;
   business_website: string | null;
@@ -56,6 +57,7 @@ function toCustomer(row: CustomerRow, proposalSummary?: ProposalSummary): Custom
     id: row.id,
     companyId: row.company_id || "",
     name: row.name || "",
+    businessName: row.business_name || "",
     email: row.email || "",
     phoneNumber: row.phone_number || "",
     businessWebsite: row.business_website || "",
@@ -194,6 +196,7 @@ export async function GET(request: NextRequest) {
         countQuery = countQuery.or(
           [
             `name.ilike.%${escapedSearch}%`,
+            `business_name.ilike.%${escapedSearch}%`,
             `email.ilike.%${escapedSearch}%`,
             `phone_number.ilike.%${escapedSearch}%`,
             `business_website.ilike.%${escapedSearch}%`,
@@ -222,6 +225,7 @@ export async function GET(request: NextRequest) {
       query = query.or(
         [
           `name.ilike.%${escapedSearch}%`,
+          `business_name.ilike.%${escapedSearch}%`,
           `email.ilike.%${escapedSearch}%`,
           `phone_number.ilike.%${escapedSearch}%`,
           `business_website.ilike.%${escapedSearch}%`,
@@ -295,10 +299,11 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as CustomerPayload;
     const name = body.name?.trim();
+    const businessName = body.businessName?.trim();
 
-    if (!name || !body.companyId) {
+    if (!name || !businessName || !body.companyId) {
       return NextResponse.json(
-        { error: "Customer name and company are required" },
+        { error: "Customer name, business name, and company are required" },
         { status: 400 },
       );
     }
@@ -319,6 +324,7 @@ export async function POST(request: NextRequest) {
         id: customerId,
         company_id: body.companyId,
         name,
+        business_name: businessName,
         email: normalizeOptionalText(body.email),
         phone_number: normalizeOptionalText(body.phoneNumber),
         business_website: normalizeOptionalText(body.businessWebsite),
@@ -347,10 +353,11 @@ export async function PUT(request: NextRequest) {
   try {
     const body = (await request.json()) as CustomerPayload & { id: string };
     const name = body.name?.trim();
+    const businessName = body.businessName?.trim();
 
-    if (!body.id || !name || !body.companyId) {
+    if (!body.id || !name || !businessName || !body.companyId) {
       return NextResponse.json(
-        { error: "Customer ID, name, and company are required" },
+        { error: "Customer ID, name, business name, and company are required" },
         { status: 400 },
       );
     }
@@ -361,6 +368,7 @@ export async function PUT(request: NextRequest) {
       .update({
         company_id: body.companyId,
         name,
+        business_name: businessName,
         email: normalizeOptionalText(body.email),
         phone_number: normalizeOptionalText(body.phoneNumber),
         business_website: normalizeOptionalText(body.businessWebsite),

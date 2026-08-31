@@ -5,6 +5,7 @@ import {
   type Proposal,
   type ProposalItem,
   type CompanyBranding,
+  type CustomerDetails,
 } from "@/app/lib/proposalTypes";
 import { currencyService } from "@/lib/currencyService";
 import { normalizePdfBase64 } from "@/lib/pdfUtils";
@@ -122,6 +123,31 @@ function resolveLogo(company: CompanyBranding) {
   };
 }
 
+function renderCustomerDetails(customer: CustomerDetails) {
+  const rows = [
+    ["Contact name", customer.name],
+    ["Business name", customer.businessName],
+    ["Email", customer.email],
+    ["Phone number", customer.phoneNumber],
+    ["Business website", customer.businessWebsite],
+    ["Required service", customer.requiredService],
+  ].filter(([, value]) => value?.trim());
+
+  if (!rows.length && !customer.notes?.trim()) {
+    return "";
+  }
+
+  return `
+    <div style="margin-bottom: 22px;">
+      <div style="font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 10px;">Customer Information</div>
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border: 1px solid #cbd5e1; border-radius: 10px; background: #f8fafc; margin-bottom: ${customer.notes?.trim() ? "10px" : "0"};">
+        ${rows.map(([label, value]) => `<tr><td style="width: 34%; padding: 9px 12px; border-bottom: 1px solid #e2e8f0; font-size: 12px; font-weight: 700; color: #475569; vertical-align: top;">${escapeHtml(label)}</td><td style="padding: 9px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; color: #1e293b; word-break: break-word;">${label === "Business website" ? `<a href="${escapeHtml(value)}" style="color: #2563eb; text-decoration: underline;">${escapeHtml(value)}</a>` : escapeHtml(value)}</td></tr>`).join("")}
+      </table>
+      ${customer.notes?.trim() ? `<div style="padding: 12px 14px; border: 1px solid #dbeafe; border-radius: 10px; background: #eff6ff; color: #1e3a8a; font-size: 13px; line-height: 1.55;"><strong>Customer notes</strong><br />${escapeHtml(customer.notes.trim()).replace(/\r?\n/g, "<br />")}</div>` : ""}
+    </div>
+  `;
+}
+
 function decodePdfBase64(value: string) {
   return Buffer.from(normalizePdfBase64(value), "base64");
 }
@@ -160,6 +186,7 @@ async function buildEmailHtml(
   appUrl?: string,
   notesHeading?: string,
   documentType: "proposal" | "invoice" = "proposal",
+  customerDetails?: CustomerDetails,
 ) {
   const isInvoice = documentType === "invoice";
   const resolvedPaymentLink = paymentLink?.trim() || DEFAULT_PAYMENT_LINK;
@@ -293,6 +320,8 @@ async function buildEmailHtml(
                 </tr>
               </table>
 
+              ${customerDetails ? renderCustomerDetails(customerDetails) : ""}
+
               ${renderAdditionalNotes(
                 proposal.notes,
                 notesHeading || "Additional Notes",
@@ -378,6 +407,7 @@ export async function sendProposalEmail(
     pdfBase64?: string;
     invoicePdfBase64?: string;
     documentType?: "proposal" | "invoice";
+    customerDetails?: CustomerDetails;
   }
 ) {
   const documentType = options?.documentType || "proposal";
@@ -396,6 +426,7 @@ export async function sendProposalEmail(
     options?.appUrl,
     options?.notesHeading,
     documentType,
+    options?.customerDetails,
   );
 
   const attachments: Attachment[] = [];
@@ -442,6 +473,7 @@ export async function sendManualProposalEmail({
   proposalTitle,
   introMessage,
   pdf,
+  customerDetails,
 }: {
   customerEmail: string;
   customerName: string;
@@ -449,6 +481,7 @@ export async function sendManualProposalEmail({
   proposalTitle: string;
   introMessage?: string;
   pdf: { filename: string; content: Buffer };
+  customerDetails?: CustomerDetails;
 }) {
   const { logoSrc, logoAttachment } = resolveLogo(company);
   const safeTitle = escapeHtml(proposalTitle);
@@ -477,6 +510,7 @@ export async function sendManualProposalEmail({
                 <div style="font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.08em;">Attached proposal</div>
                 <div style="margin-top: 5px; font-size: 16px; font-weight: 700; color: #0f172a;">${safeTitle}</div>
               </div>
+              ${customerDetails ? renderCustomerDetails(customerDetails) : ""}
               <p style="margin: 0; font-size: 15px; line-height: 1.65; color: #334155;">Kind regards,<br /><strong>${escapeHtml(company.businessName)}</strong></p>
               <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 13px; line-height: 1.6; color: #475569;">
                 ${company.email ? `<div>${escapeHtml(company.email)}</div>` : ""}

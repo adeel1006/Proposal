@@ -11,6 +11,7 @@ import type {
   CompanyBranding,
   Proposal,
   ProposalItem,
+  CustomerDetails,
 } from "@/app/lib/proposalTypes";
 
 const NAVY = "#0B1F4D";
@@ -63,6 +64,11 @@ const styles = StyleSheet.create({
   termCard: { flexGrow: 1, flexBasis: 0, padding: 9, borderWidth: 1, borderColor: BORDER, borderRadius: 3 },
   termLabel: { fontSize: 6.5, fontFamily: "Helvetica-Bold", letterSpacing: 0.5, color: ROYAL, marginBottom: 4 },
   termText: { fontSize: 7.5, lineHeight: 1.45, color: MUTED },
+  customerInfoBox: { borderWidth: 1, borderColor: BORDER, borderRadius: 3, backgroundColor: PALE, padding: 8 },
+  customerInfoRow: { flexDirection: "row", paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: BORDER },
+  customerInfoLabel: { width: "30%", fontSize: 6.5, fontFamily: "Helvetica-Bold", color: ROYAL },
+  customerInfoValue: { flex: 1, fontSize: 7.5, lineHeight: 1.35, color: TEXT },
+  customerNotes: { flexDirection: "row", paddingTop: 6 },
   notes: { padding: 10, backgroundColor: "#EDF3FC", borderLeftWidth: 3, borderLeftColor: ROYAL, fontSize: 7.5, color: MUTED, lineHeight: 1.5 },
   proposalContent: { gap: 7 },
   proposalSection: { padding: 10, borderWidth: 1, borderColor: BORDER, borderRadius: 3, backgroundColor: "#FBFCFE" },
@@ -73,14 +79,17 @@ const styles = StyleSheet.create({
   bulletMark: { width: 10, fontSize: 8, color: ROYAL },
   bulletText: { flex: 1, fontSize: 7.5, lineHeight: 1.45, color: MUTED },
   resource: { marginBottom: 4, fontSize: 7.25, color: MUTED, lineHeight: 1.4 },
-  footer: { position: "absolute", left: 34, right: 34, bottom: 18, paddingTop: 7, borderTopWidth: 1, borderTopColor: BORDER, flexDirection: "row", justifyContent: "space-between" },
-  footerText: { fontSize: 6.5, color: "#8290A3" },
+  footer: { position: "absolute", left: 34, right: 34, bottom: 16, paddingTop: 6, borderTopWidth: 1, borderTopColor: BORDER, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  footerBrand: { width: "66%", fontSize: 6.5, fontFamily: "Helvetica-Bold", color: NAVY },
+  footerContact: { marginTop: 2, fontSize: 5.75, lineHeight: 1.3, color: "#8290A3" },
+  footerText: { width: "28%", fontSize: 6.5, color: "#8290A3", textAlign: "right" },
 });
 
 type PdfProps = {
   proposal: Proposal;
   company: CompanyBranding;
   items: ProposalItem[];
+  customer?: CustomerDetails;
 };
 
 function selectedItems(proposal: Proposal, items: ProposalItem[]) {
@@ -222,15 +231,53 @@ function CompanyHeader({ company, title, number }: { company: CompanyBranding; t
 }
 
 function PageFooter({ company }: { company: CompanyBranding }) {
+  const contactDetails = [
+    company.email,
+    company.mobileNumber,
+    company.website,
+    company.address,
+  ].filter(Boolean).join("  |  ");
+
   return (
     <View style={styles.footer} fixed>
-      <Text style={styles.footerText}>{company.businessName}</Text>
+      <View style={{ width: "66%" }}>
+        <Text style={styles.footerBrand}>{company.businessName}</Text>
+        {contactDetails ? <Text style={styles.footerContact}>{contactDetails}</Text> : null}
+      </View>
       <Text style={styles.footerText} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
     </View>
   );
 }
 
-function InvoiceDocument({ proposal, company, items }: PdfProps) {
+function CustomerInformation({ customer }: { customer?: CustomerDetails }) {
+  if (!customer) return null;
+  const values = [
+    ["Contact name", customer.name],
+    ["Business name", customer.businessName],
+    ["Email", customer.email],
+    ["Phone number", customer.phoneNumber],
+    ["Business website", customer.businessWebsite],
+    ["Required service", customer.requiredService],
+  ].filter(([, value]) => value?.trim());
+  if (!values.length && !customer.notes?.trim()) return null;
+
+  return (
+    <View style={styles.section} wrap={false}>
+      <Text style={styles.sectionTitle}>Customer Information</Text>
+      <View style={styles.customerInfoBox}>
+        {values.map(([label, value]) => (
+          <View key={label} style={styles.customerInfoRow}>
+            <Text style={styles.customerInfoLabel}>{label}</Text>
+            <Text style={styles.customerInfoValue}>{value}</Text>
+          </View>
+        ))}
+        {customer.notes?.trim() ? <View style={styles.customerNotes}><Text style={styles.customerInfoLabel}>Notes</Text><Text style={styles.customerInfoValue}>{customer.notes.trim()}</Text></View> : null}
+      </View>
+    </View>
+  );
+}
+
+function InvoiceDocument({ proposal, company, items, customer }: PdfProps) {
   const rows = selectedItems(proposal, items);
   const currency = company.currency || "USD";
   const total = rows.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -245,6 +292,7 @@ function InvoiceDocument({ proposal, company, items }: PdfProps) {
             <Text style={styles.cardValue}>{proposal.clientName}</Text>
             {proposal.clientEmail ? <Text style={styles.cardSubvalue}>{proposal.clientEmail}</Text> : null}
             {proposal.clientPhoneNumber ? <Text style={styles.cardSubvalue}>{proposal.clientPhoneNumber}</Text> : null}
+            {customer?.businessWebsite ? <Text style={styles.cardSubvalue}>{customer.businessWebsite}</Text> : null}
           </View>
           <View style={styles.card}>
             <Text style={styles.cardLabel}>PROJECT</Text>
@@ -253,6 +301,7 @@ function InvoiceDocument({ proposal, company, items }: PdfProps) {
             {proposal.validUntil ? <Text style={styles.cardSubvalue}>Valid until: {proposal.validUntil}</Text> : null}
           </View>
         </View>
+        <CustomerInformation customer={customer} />
         <View style={styles.table}>
           <View style={styles.tableHeader} fixed>
             <Text style={[styles.cell, styles.tableHeaderText, { width: "47%" }]}>DESCRIPTION</Text>
@@ -281,7 +330,7 @@ function InvoiceDocument({ proposal, company, items }: PdfProps) {
   );
 }
 
-function ProposalDocument({ proposal, company, items }: PdfProps) {
+function ProposalDocument({ proposal, company, items, customer }: PdfProps) {
   const rows = selectedItems(proposal, items);
   return (
     <Document title={`Proposal - ${proposal.projectTitle}`} author={company.businessName}>
@@ -292,7 +341,9 @@ function ProposalDocument({ proposal, company, items }: PdfProps) {
           <View style={styles.card}><Text style={styles.cardLabel}>PROJECT</Text><Text style={styles.cardValue}>{proposal.projectTitle}</Text></View>
           <View style={styles.card}><Text style={styles.cardLabel}>VALID UNTIL</Text><Text style={styles.cardValue}>{proposal.validUntil || "Further notice"}</Text></View>
         </View>
+        <CustomerInformation customer={customer} />
         {proposal.projectDescription ? <View style={styles.section} wrap={false}><Text style={styles.sectionTitle}>Project Overview</Text><Text style={styles.overview}>{proposal.projectDescription}</Text></View> : null}
+        {proposal.notes ? <View style={styles.section}><Text style={styles.sectionTitle}>Proposal</Text><ProposalContent notes={proposal.notes} /></View> : null}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Scope of Work</Text>
           <View style={styles.table}>
@@ -318,7 +369,6 @@ function ProposalDocument({ proposal, company, items }: PdfProps) {
           </View>
         </View>
         {proposal.terms?.additionalTerms ? <View style={styles.section} wrap={false}><Text style={styles.termLabel}>TERMS & CONDITIONS</Text><Text style={styles.notes}>{proposal.terms.additionalTerms}</Text></View> : null}
-        {proposal.notes ? <View style={styles.section}><Text style={styles.sectionTitle}>Proposal</Text><ProposalContent notes={proposal.notes} /></View> : null}
         {proposal.attachments?.length ? <View style={styles.section}><Text style={styles.sectionTitle}>Reference Links</Text>{proposal.attachments.map((attachment) => <Text key={attachment.id} style={styles.resource}>{attachment.label}: {attachment.url}</Text>)}</View> : null}
         <PageFooter company={company} />
       </Page>
@@ -330,10 +380,11 @@ export async function generateProfessionalPdfs(
   proposal: Proposal,
   company: CompanyBranding,
   items: ProposalItem[],
+  customer?: CustomerDetails,
 ) {
   const [invoice, proposalPdf] = await Promise.all([
-    renderToBuffer(<InvoiceDocument proposal={proposal} company={company} items={items} />),
-    renderToBuffer(<ProposalDocument proposal={proposal} company={company} items={items} />),
+    renderToBuffer(<InvoiceDocument proposal={proposal} company={company} items={items} customer={customer} />),
+    renderToBuffer(<ProposalDocument proposal={proposal} company={company} items={items} customer={customer} />),
   ]);
 
   return {

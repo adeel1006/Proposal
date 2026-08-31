@@ -89,6 +89,7 @@ async function requestCustomers(
     ...customer,
     companyId: customer.companyId || "",
     name: customer.name || "",
+    businessName: customer.businessName || "",
     email: customer.email || "",
     phoneNumber: customer.phoneNumber || "",
     businessWebsite: customer.businessWebsite || "",

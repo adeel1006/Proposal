@@ -84,6 +84,10 @@ function ensureInvoiceId(proposal: Proposal): Proposal {
   };
 }
 
+function getInvoiceIdLabel(id: string) {
+  return id.toLowerCase().startsWith("inv-draft-") ? "Pending assignment" : id;
+}
+
 export default function AdminDashboard() {
   const { companies, loading: companiesLoading } = useCompanies();
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
@@ -114,6 +118,7 @@ export default function AdminDashboard() {
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);
   const [quickCustomer, setQuickCustomer] = useState({
     name: "",
+    businessName: "",
     email: "",
     phoneNumber: "",
     businessWebsite: "",
@@ -129,6 +134,7 @@ export default function AdminDashboard() {
       const haystack = [
         customer.id,
         customer.name,
+        customer.businessName,
         customer.email,
         customer.phoneNumber,
         customer.businessWebsite,
@@ -388,11 +394,17 @@ export default function AdminDashboard() {
       return;
     }
 
+    if (!quickCustomer.businessName.trim()) {
+      setTimedMessage("Error: Business name is required");
+      return;
+    }
+
     setIsSavingCustomer(true);
     try {
       const customer = await createCustomer({
         companyId: selectedCompanyId,
         name: quickCustomer.name.trim(),
+        businessName: quickCustomer.businessName.trim(),
         email: quickCustomer.email.trim(),
         phoneNumber: quickCustomer.phoneNumber.trim(),
         businessWebsite: quickCustomer.businessWebsite.trim(),
@@ -403,6 +415,7 @@ export default function AdminDashboard() {
         applyCustomerToProposal(customer);
         setQuickCustomer({
           name: "",
+          businessName: "",
           email: "",
           phoneNumber: "",
           businessWebsite: "",
@@ -613,7 +626,7 @@ export default function AdminDashboard() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-bold text-gray-600">Invoice ID</p>
-              <p className="font-mono font-bold text-lg">{proposal.id}</p>
+              <p className="font-mono font-bold text-lg">{getInvoiceIdLabel(proposal.id)}</p>
             </div>
           <div className="flex justify-start sm:justify-end">
             <button
@@ -883,6 +896,18 @@ export default function AdminDashboard() {
                           }
                           className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
                           placeholder="Email"
+                        />
+                        <input
+                          type="text"
+                          value={quickCustomer.businessName}
+                          onChange={(e) =>
+                            setQuickCustomer((current) => ({
+                              ...current,
+                              businessName: e.target.value,
+                            }))
+                          }
+                          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                          placeholder="Business name *"
                         />
                         <input
                           type="tel"

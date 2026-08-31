@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sendManualProposalEmail } from "@/lib/emailService";
 import { formatReadableId, slugifyIdSegment } from "@/lib/readableIds";
 import { getSupabaseAdminClient } from "@/lib/supabase";
-import type { CompanyBranding } from "@/app/lib/proposalTypes";
+import type { CompanyBranding, CustomerDetails } from "@/app/lib/proposalTypes";
 
 export const runtime = "nodejs";
 
@@ -32,8 +32,12 @@ type CustomerRow = {
   id: string;
   company_id: string | null;
   name: string;
+  business_name: string | null;
   email: string | null;
   phone_number: string | null;
+  business_website: string | null;
+  required_service: string | null;
+  notes: string | null;
   created_at: string;
 };
 
@@ -125,7 +129,7 @@ export async function POST(request: NextRequest) {
         supabase.from("companies").select("*").eq("id", companyId).single(),
         supabase
           .from("customers")
-          .select("id, company_id, name, email, phone_number, created_at")
+          .select("id, company_id, name, business_name, email, phone_number, business_website, required_service, notes, created_at")
           .eq("id", customerId)
           .eq("company_id", companyId)
           .single(),
@@ -144,6 +148,15 @@ export async function POST(request: NextRequest) {
 
     const company = toCompanyBranding(companyData as CompanyRow);
     const customer = customerData as CustomerRow;
+    const customerDetails: CustomerDetails = {
+      name: customer.name,
+      businessName: customer.business_name || "",
+      email: customer.email || recipientEmail,
+      phoneNumber: customer.phone_number || "",
+      businessWebsite: customer.business_website || "",
+      requiredService: customer.required_service || "",
+      notes: customer.notes || "",
+    };
     const { count, error: countError } = await supabase
       .from("proposals")
       .select("id", { count: "exact", head: true })
@@ -211,6 +224,7 @@ export async function POST(request: NextRequest) {
     await sendManualProposalEmail({
       customerEmail: recipientEmail,
       customerName: customer.name,
+      customerDetails,
       company,
       proposalTitle,
       introMessage,

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendProposalEmail } from '@/lib/emailService';
 import { generateProfessionalPdfs } from '@/lib/serverPdfService';
-import { formatReadableId, slugifyIdSegment } from '@/lib/readableIds';
+import { formatInvoiceId, formatReadableId, slugifyIdSegment } from '@/lib/readableIds';
 import {
   Proposal,
   ProposalItem,
   CompanyBranding,
   normalizeProposalAttachments,
+  CustomerDetails,
   validateProposalAttachments,
 } from '@/app/lib/proposalTypes';
 import { getSupabaseAdminClient } from '@/lib/supabase';
@@ -69,15 +70,63 @@ export async function POST(request: NextRequest) {
       attachments: normalizeProposalAttachments(proposal.attachments),
     };
 
-    const pdfItems = Array.isArray(items) && items.length ? items : normalizedProposal.items || [];
+    let customerDetails: CustomerDetails = {
+      name: customerName,
+      email: proposal.clientEmail || customerEmail,
+      phoneNumber: proposal.clientPhoneNumber || "",
+    };
+    const supabase = getSupabaseAdminClient();
+    if (proposal.customerId) {
+      const { data: customerRow } = await supabase
+        .from("customers")
+        .select("name, business_name, email, phone_number, business_website, required_service, notes")
+        .eq("id", proposal.customerId)
+        .maybeSingle();
+      if (customerRow) {
+        customerDetails = {
+          name: customerRow.name || customerName,
+          businessName: customerRow.business_name || "",
+          email: customerRow.email || proposal.clientEmail || customerEmail,
+          phoneNumber: customerRow.phone_number || proposal.clientPhoneNumber || "",
+          businessWebsite: customerRow.business_website || "",
+          requiredService: customerRow.required_service || "",
+          notes: customerRow.notes || "",
+        };
+      }
+    }
+
+    let proposalId = proposal.id?.trim() || "";
+    if (
+      resolvedDocumentType === "invoice" &&
+      (proposalId.toLowerCase().startsWith("prop-") || proposalId.toLowerCase().startsWith("inv-draft-"))
+    ) {
+      proposalId = "";
+    }
+    if (!proposalId) {
+      const idPrefix = resolvedDocumentType === "invoice" ? "inv" : "prop";
+      const label = proposal.clientName || proposal.projectTitle || resolvedDocumentType;
+      const idPattern = resolvedDocumentType === "invoice"
+        ? `inv-${new Date().getUTCFullYear()}-%`
+        : `${idPrefix}-${slugifyIdSegment(label)}-%`;
+      const { count } = await supabase
+        .from("proposals")
+        .select("id", { count: "exact", head: true })
+        .ilike("id", idPattern);
+      proposalId = resolvedDocumentType === "invoice"
+        ? formatInvoiceId((count || 0) + 1)
+        : formatReadableId(idPrefix, label, (count || 0) + 1);
+    }
+
+    const proposalForDelivery = { ...normalizedProposal, id: proposalId };
+    const pdfItems = Array.isArray(items) && items.length ? items : proposalForDelivery.items || [];
     const { pdfBase64, invoicePdfBase64 } = await generateProfessionalPdfs(
-      normalizedProposal,
+      proposalForDelivery,
       company,
       pdfItems,
+      customerDetails,
     );
 
     try {
-      const supabase = getSupabaseAdminClient();
       let customerCreatedAt: string | null = null;
       if (proposal.customerId) {
         const { data: customerRow } = await supabase
@@ -86,19 +135,6 @@ export async function POST(request: NextRequest) {
           .eq("id", proposal.customerId)
           .maybeSingle();
         customerCreatedAt = customerRow?.created_at || null;
-      }
-      let proposalId = proposal.id?.trim() || '';
-      if (resolvedDocumentType === 'invoice' && proposalId.toLowerCase().startsWith('prop-')) {
-        proposalId = '';
-      }
-      if (!proposalId) {
-        const label = proposal.clientName || proposal.projectTitle || resolvedDocumentType;
-        const idPrefix = resolvedDocumentType === 'invoice' ? 'inv' : 'prop';
-        const { count } = await supabase
-          .from('proposals')
-          .select('id', { count: 'exact', head: true })
-          .ilike('id', `${idPrefix}-${slugifyIdSegment(label)}-%`);
-        proposalId = formatReadableId(idPrefix, label, (count || 0) + 1);
       }
       await supabase
         .from('proposals')
@@ -155,7 +191,7 @@ export async function POST(request: NextRequest) {
     await sendProposalEmail(
       customerEmail,
       customerName,
-      normalizedProposal,
+      proposalForDelivery,
       company,
       pdfItems,
       resolvedPaymentLink || undefined,
@@ -165,12 +201,14 @@ export async function POST(request: NextRequest) {
         pdfBase64,
         invoicePdfBase64,
         documentType: resolvedDocumentType,
+        customerDetails,
       },
     );
 
     return NextResponse.json({
       success: true,
       message: `${resolvedDocumentType === 'invoice' ? 'Invoice' : 'Proposal'} sent to ${customerEmail}`,
+      invoiceId: resolvedDocumentType === "invoice" ? proposalId : undefined,
     });
   } catch (error) {
     console.error('Error sending document:', error);

@@ -13,6 +13,7 @@ type CustomerFormState = {
   id?: string;
   companyId: string;
   name: string;
+  businessName: string;
   email: string;
   phoneNumber: string;
   businessWebsite: string;
@@ -23,6 +24,7 @@ type CustomerFormState = {
 const emptyForm: CustomerFormState = {
   companyId: "",
   name: "",
+  businessName: "",
   email: "",
   phoneNumber: "",
   businessWebsite: "",
@@ -33,6 +35,7 @@ const emptyForm: CustomerFormState = {
 const CUSTOMER_CSV_HEADERS = [
   "companyId",
   "name",
+  "businessName",
   "email",
   "phoneNumber",
   "businessWebsite",
@@ -50,6 +53,7 @@ function toFormState(customer: Customer): CustomerFormState {
     id: customer.id,
     companyId: customer.companyId,
     name: customer.name,
+    businessName: customer.businessName || "",
     email: customer.email || "",
     phoneNumber: customer.phoneNumber || "",
     businessWebsite: customer.businessWebsite || "",
@@ -247,6 +251,7 @@ export default function CustomersPage() {
       [
         sampleCompanyId,
         "Acme Foods",
+        "Acme Foods LLC",
         "owner@acmefoods.com",
         "+1 555 123 4567",
         "https://acmefoods.com",
@@ -256,6 +261,7 @@ export default function CustomersPage() {
       [
         sampleCompanyId,
         "Northstar Studio",
+        "Northstar Studio Inc.",
         "hello@northstarstudio.com",
         "+1 555 987 6543",
         "https://northstarstudio.com",
@@ -317,10 +323,16 @@ export default function CustomersPage() {
           continue;
         }
 
+        if (!data.businessName) {
+          errors.push(`Row ${rowNumber}: businessName is required.`);
+          continue;
+        }
+
         try {
           await createCustomer({
             companyId: data.companyId,
             name: data.name,
+            businessName: data.businessName,
             email: data.email,
             phoneNumber: data.phoneNumber,
             businessWebsite: data.businessWebsite,
@@ -390,8 +402,11 @@ export default function CustomersPage() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!form.companyId || !form.name.trim()) {
-      setTimedMessage({ type: "error", text: "Company and customer name are required." });
+    if (!form.companyId || !form.name.trim() || !form.businessName.trim()) {
+      setTimedMessage({
+        type: "error",
+        text: "Company, customer name, and business name are required.",
+      });
       return;
     }
 
@@ -401,6 +416,7 @@ export default function CustomersPage() {
         id: form.id,
         companyId: form.companyId,
         name: form.name.trim(),
+        businessName: form.businessName.trim(),
         email: form.email.trim(),
         phoneNumber: form.phoneNumber.trim(),
         businessWebsite: form.businessWebsite.trim(),
@@ -581,6 +597,23 @@ export default function CustomersPage() {
               </div>
               <div>
                 <label className="mb-1 block text-sm font-semibold text-slate-700">
+                  Business Name *
+                </label>
+                <input
+                  value={form.businessName}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      businessName: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                  placeholder="e.g. Acme Foods LLC"
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-slate-700">
                   Email
                 </label>
                 <input
@@ -754,6 +787,11 @@ export default function CustomersPage() {
                             <h3 className="text-lg font-semibold text-slate-950">
                               {customer.name}
                             </h3>
+                            {customer.businessName && (
+                              <span className="text-sm font-medium text-slate-600">
+                                {customer.businessName}
+                              </span>
+                            )}
                             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
                               {customer.id}
                             </span>

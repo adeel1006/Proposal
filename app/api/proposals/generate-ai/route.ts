@@ -1004,7 +1004,8 @@ function buildFallbackGeneratedProposal({
     .filter((name): name is string => Boolean(name));
   const primaryService =
     customer.requiredService?.trim() || serviceNames[0] || "business support";
-  const title = `${customer.name || company.businessName} - ${primaryService}`;
+  const clientLabel = customer.businessName || customer.name || "the customer";
+  const title = `${clientLabel} - ${primaryService}`;
   const summarySource =
     websiteOverview.text ||
     websiteOverview.fetchNote ||
@@ -1016,11 +1017,11 @@ function buildFallbackGeneratedProposal({
   return {
     projectTitle: title,
     projectDescription:
-      `A professional proposal prepared for ${customer.name || "the customer"} using the stored customer details, selected company services, and the available website review notes.`,
+      `A professional proposal prepared for ${clientLabel} using the stored customer details, selected company services, and the available website review notes.`,
     introduction:
       `Thank you for considering ${company.businessName}. This draft was prepared from the available customer record, selected services, and website review information.`,
     businessUnderstanding:
-      `Based on the saved data, ${customer.name || "the customer"} needs support around ${primaryService}. The proposal has been kept aligned to the provided scope and the website review notes only.`,
+      `Based on the saved data, ${clientLabel} needs support around ${primaryService}. The proposal has been kept aligned to the provided scope and the website review notes only.`,
     problemsOrOpportunities: [
       `The current website and brief indicate a clear need around ${primaryService}.`,
       `There is room to align ${primaryService} with a more focused client-facing strategy and clearer execution scope.${keywordLine}`,
@@ -1170,6 +1171,7 @@ export async function POST(request: NextRequest) {
         },
         customer: {
           name: customer.name,
+          businessName: customer.businessName,
           email: customer.email,
           phoneNumber: customer.phoneNumber,
           businessWebsite: customer.businessWebsite,

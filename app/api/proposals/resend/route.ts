@@ -7,6 +7,7 @@ import {
   type Proposal,
   type ProposalItem,
   type CompanyBranding,
+  type CustomerDetails,
 } from '@/app/lib/proposalTypes';
 
 export const runtime = 'nodejs';
@@ -62,6 +63,29 @@ export async function POST(request: NextRequest) {
     };
 
     const company: CompanyBranding = proposalData.company || {};
+    let customerDetails: CustomerDetails = {
+      name: proposal.clientName || "",
+      email: proposal.clientEmail || "",
+      phoneNumber: proposal.clientPhoneNumber || "",
+    };
+    if (proposalData.customer_id) {
+      const { data: customerRow } = await supabase
+        .from("customers")
+        .select("name, business_name, email, phone_number, business_website, required_service, notes")
+        .eq("id", proposalData.customer_id)
+        .maybeSingle();
+      if (customerRow) {
+        customerDetails = {
+          name: customerRow.name || proposalData.client_name || "",
+          businessName: customerRow.business_name || "",
+          email: customerRow.email || proposalData.client_email || "",
+          phoneNumber: customerRow.phone_number || proposalData.client_phone_number || "",
+          businessWebsite: customerRow.business_website || "",
+          requiredService: customerRow.required_service || "",
+          notes: customerRow.notes || "",
+        };
+      }
+    }
     const items: ProposalItem[] = proposalData.items || [];
     const resolvedPaymentLink =
       paymentLink?.trim() ||
@@ -87,6 +111,7 @@ export async function POST(request: NextRequest) {
       proposal,
       company,
       items,
+      customerDetails,
     );
 
     const { error: updatePdfError } = await supabase
@@ -135,6 +160,7 @@ export async function POST(request: NextRequest) {
       {
         pdfBase64,
         invoicePdfBase64,
+        customerDetails,
       }
     );
 

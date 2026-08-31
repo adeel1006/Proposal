@@ -5,7 +5,7 @@ import {
   normalizeProposalAttachments,
   validateProposalAttachments,
 } from "@/app/lib/proposalTypes";
-import { formatReadableId, slugifyIdSegment } from "@/lib/readableIds";
+import { formatInvoiceId, formatReadableId, slugifyIdSegment } from "@/lib/readableIds";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 
 type SaveProposalPayload = {
@@ -157,16 +157,24 @@ export async function POST(request: NextRequest) {
       customerCreatedAt = customerRow?.created_at || null;
     }
     let proposalId = proposal.id?.trim() || "";
-    if (documentType === "invoice" && proposalId.toLowerCase().startsWith("prop-")) {
+    if (
+      documentType === "invoice" &&
+      (proposalId.toLowerCase().startsWith("prop-") || proposalId.toLowerCase().startsWith("inv-draft-"))
+    ) {
       proposalId = "";
     }
     if (!proposalId) {
       const label = proposal.clientName || proposal.projectTitle || documentType || "proposal";
+      const idPattern = documentType === "invoice"
+        ? `inv-${new Date().getUTCFullYear()}-%`
+        : `${idPrefix}-${slugifyIdSegment(label)}-%`;
       const { count } = await supabase
         .from("proposals")
         .select("id", { count: "exact", head: true })
-        .ilike("id", `${idPrefix}-${slugifyIdSegment(label)}-%`);
-      proposalId = formatReadableId(idPrefix, label, (count || 0) + 1);
+        .ilike("id", idPattern);
+      proposalId = documentType === "invoice"
+        ? formatInvoiceId((count || 0) + 1)
+        : formatReadableId(idPrefix, label, (count || 0) + 1);
     }
 
     const payload: Record<string, unknown> = {

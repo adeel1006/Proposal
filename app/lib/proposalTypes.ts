@@ -33,6 +33,7 @@ export interface Customer {
   id: string;
   companyId: string;
   name: string;
+  businessName?: string;
   email?: string;
   phoneNumber?: string;
   businessWebsite?: string;
@@ -44,6 +45,11 @@ export interface Customer {
   proposalCount?: number;
   lastProposalSentAt?: string;
 }
+
+export type CustomerDetails = Pick<
+  Customer,
+  "name" | "businessName" | "email" | "phoneNumber" | "businessWebsite" | "requiredService" | "notes"
+>;
 
 export interface ProposalItem {
   id: string;
